@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Complete Claude Code Guide</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #da7756;
+    --accent-light: #e8956e;
+    --link: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --code-bg: #1a1f2b;
+    --nav-width: 280px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* Sidebar Navigation */
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--nav-width);
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    z-index: 100;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  nav::-webkit-scrollbar { width: 6px; }
+  nav::-webkit-scrollbar-track { background: transparent; }
+  nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .nav-logo {
+    padding: 10px 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+
+  .nav-logo h2 {
+    font-size: 1.1rem;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+  }
+
+  .nav-logo .version {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  nav a {
+    display: block;
+    padding: 6px 20px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+  }
+
+  nav a:hover {
+    color: var(--text);
+    background: var(--bg-tertiary);
+    border-left-color: var(--accent);
+  }
+
+  nav a.section-header {
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    cursor: default;
+    pointer-events: none;
+  }
+
+  nav a.section-header:first-child { border-top: none; margin-top: 0; }
+
+  /* Main Content */
+  main {
+    margin-left: var(--nav-width);
+    flex: 1;
+    max-width: 900px;
+    padding: 40px 50px 100px;
+  }
+
+  h1 {
+    font-size: 2.2rem;
+    margin-bottom: 8px;
+    color: var(--accent);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 15px;
+  }
+
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 1rem;
+    margin-bottom: 40px;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    margin-top: 50px;
+    margin-bottom: 20px;
+    color: var(--text);
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  h2:first-of-type { border-top: none; padding-top: 0; }
+
+  h3 {
+    font-size: 1.15rem;
+    margin-top: 30px;
+    margin-bottom: 12px;
+    color: var(--accent-light);
+  }
+
+  h4 {
+    font-size: 1rem;
+    margin-top: 20px;
+    margin-bottom: 8px;
+    color: var(--purple);
+  }
+
+  p { margin-bottom: 14px; }
+
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  strong { color: var(--text); }
+  em { color: var(--text-muted); font-style: italic; }
+
+  code {
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    color: var(--accent-light);
+  }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin: 14px 0 18px;
+    line-height: 1.5;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    color: var(--text);
+    font-size: 0.85em;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 20px;
+    font-size: 0.9rem;
+  }
+
+  th {
+    background: var(--bg-tertiary);
+    color: var(--accent-light);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  td {
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+
+  /* Callout boxes */
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: rgba(218, 119, 86, 0.08);
+    padding: 14px 18px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+  }
+
+  .callout.tip { border-left-color: var(--green); background: rgba(63, 185, 80, 0.08); }
+  .callout.warning { border-left-color: var(--yellow); background: rgba(210, 153, 34, 0.08); }
+  .callout.danger { border-left-color: var(--red); background: rgba(248, 81, 73, 0.08); }
+
+  .callout-title {
+    font-weight: 700;
+    margin-bottom: 4px;
+    font-size: 0.9rem;
+  }
+
+  .callout.tip .callout-title { color: var(--green); }
+  .callout.warning .callout-title { color: var(--yellow); }
+  .callout.danger .callout-title { color: var(--red); }
+
+  ul, ol { margin: 10px 0 14px 24px; }
+  li { margin-bottom: 4px; }
+
+  /* Event lifecycle diagram */
+  .lifecycle {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 14px 0 18px;
+    color: var(--text-muted);
+  }
+
+  .lifecycle .event { color: var(--accent); font-weight: bold; }
+  .lifecycle .action { color: var(--green); }
+  .lifecycle .note { color: var(--text-muted); }
+
+  /* Key-value badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 4px;
+  }
+
+  .badge-green { background: rgba(63,185,80,0.2); color: var(--green); }
+  .badge-yellow { background: rgba(210,153,34,0.2); color: var(--yellow); }
+  .badge-red { background: rgba(248,81,73,0.2); color: var(--red); }
+  .badge-purple { background: rgba(188,140,255,0.2); color: var(--purple); }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    nav { display: none; }
+    main { margin-left: 0; padding: 20px; }
+  }
+
+  /* Smooth scrolling */
+  html { scroll-behavior: smooth; }
+
+  /* Section anchors */
+  h2[id], h3[id] { scroll-margin-top: 20px; }
+
+  .key {
+    display: inline-block;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-family: monospace;
+    font-size: 0.8em;
+    min-width: 24px;
+    text-align: center;
+  }
+
+  .separator { margin: 0 3px; color: var(--text-muted); }
+
+  footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">
+    <h2>Claude Code Guide</h2>
+    <div class="version">Complete Reference &mdash; March 2026</div>
+  </div>
+
+  <a class="section-header">Getting Started</a>
+  <a href="#intro">What is Claude Code?</a>
+  <a href="#install">Installation</a>
+  <a href="#first-session">First Session</a>
+
+  <a class="section-header">Core Features</a>
+  <a href="#capabilities">Capabilities</a>
+  <a href="#slash-commands">Slash Commands</a>
+  <a href="#keyboard-shortcuts">Keyboard Shortcuts</a>
+  <a href="#permission-modes">Permission Modes</a>
+
+  <a class="section-header">Configuration</a>
+  <a href="#claude-md">CLAUDE.md Files</a>
+  <a href="#settings">settings.json</a>
+  <a href="#permissions">Permissions (Allow/Deny)</a>
+
+  <a class="section-header">Hooks (Automation)</a>
+  <a href="#hooks-why">Why Hooks Exist</a>
+  <a href="#hooks-events">All Hook Events</a>
+  <a href="#hooks-protocol">The Exit Code Protocol</a>
+  <a href="#hooks-config">Configuration Format</a>
+  <a href="#hooks-recipes">Practical Recipes</a>
+
+  <a class="section-header">Memory System</a>
+  <a href="#auto-memory">Auto Memory</a>
+  <a href="#memory-vs-claude-md">Memory vs CLAUDE.md</a>
+  <a href="#200-line-limit">The 200-Line Limit</a>
+  <a href="#context-management">Context Management</a>
+
+  <a class="section-header">Advanced Features</a>
+  <a href="#subagents">Subagents</a>
+  <a href="#mcp">MCP Servers</a>
+  <a href="#skills">Skills</a>
+  <a href="#plan-mode">Plan Mode</a>
+  <a href="#worktrees">Git Worktrees</a>
+  <a href="#ide">IDE Integrations</a>
+
+  <a class="section-header">Power User</a>
+  <a href="#hidden-gems">Hidden Gems</a>
+  <a href="#headless">Headless/SDK Mode</a>
+  <a href="#cli-reference">CLI Reference</a>
+  <a href="#tips">Tips &amp; Best Practices</a>
+
+  <a class="section-header">Android / Termux</a>
+  <a href="#android-overview">Running on Android</a>
+  <a href="#android-install">Installation Steps</a>
+  <a href="#android-tmp">The /tmp Fix (Critical)</a>
+  <a href="#android-extras">Extras &amp; Known Issues</a>
+
+  <a class="section-header">Prometheus + Claude Code</a>
+  <a href="#prometheus-analysis">Analysis &amp; Recommendations</a>
+</nav>
+
+<main>
+
+<h1>The Complete Claude Code Guide</h1>
+<p class="subtitle">Everything you need to know &mdash; from first install to power-user mastery.<br>
+Built from a deep-dive conversation, March 2026.</p>
+
+<!-- ==================== GETTING STARTED ==================== -->
+
+<h2 id="intro">What is Claude Code?</h2>
+<p>Claude Code is Anthropic's official CLI-based agentic coding assistant. Powered by Claude Opus 4.6, it lives in your terminal (and VS Code, JetBrains, desktop app, and the web). It can read your entire codebase, edit files, run commands, search the web, create git commits and PRs, spawn sub-agents for parallel work, and more &mdash; all through natural conversation.</p>
+
+<p>It operates in a continuous <strong>agentic loop</strong>:</p>
+<ol>
+  <li><strong>Gather Context</strong> &mdash; Read files, search code, understand structure</li>
+  <li><strong>Take Action</strong> &mdash; Edit files, run commands, create commits</li>
+  <li><strong>Verify Results</strong> &mdash; Run tests, check output, iterate</li>
+</ol>
+<p>You're always part of the loop: interrupt anytime to steer Claude in a different direction.</p>
+
+
+<h2 id="install">Installation</h2>
+
+<h3>macOS / Linux / WSL</h3>
+<pre><code>curl -fsSL https://claude.ai/install.sh | bash</code></pre>
+
+<h3>Windows PowerShell</h3>
+<pre><code>irm https://claude.ai/install.ps1 | iex</code></pre>
+
+<h3>Homebrew</h3>
+<pre><code>brew install --cask claude-code</code></pre>
+
+<h3>WinGet</h3>
+<pre><code>winget install Anthropic.ClaudeCode</code></pre>
+
+<h3>After installation</h3>
+<pre><code>claude --version        # Verify install
+claude auth login       # Authenticate
+cd your-project
+claude                  # Start your first session</code></pre>
+
+
+<h2 id="first-session">First Session</h2>
+<pre><code>claude                         # Interactive session
+claude "fix the login bug"     # Start with a prompt
+claude -p "explain this code"  # Print mode (non-interactive)
+claude -c                      # Continue last session</code></pre>
+
+<div class="callout tip">
+  <div class="callout-title">Pro tip</div>
+  Run <code>/init</code> in your first session to generate a CLAUDE.md file for your project. This teaches Claude your build commands, conventions, and architecture.
+</div>
+
+
+<!-- ==================== CORE FEATURES ==================== -->
+
+<h2 id="capabilities">Core Capabilities</h2>
+<table>
+  <tr><th>Category</th><th>What Claude Code Can Do</th></tr>
+  <tr><td><strong>Files</strong></td><td>Read, edit, create, rename, search by pattern (Glob) or content (Grep)</td></tr>
+  <tr><td><strong>Shell</strong></td><td>Run any command, start servers, background processes</td></tr>
+  <tr><td><strong>Git</strong></td><td>Commits, branches, PRs, diffs, log, push/pull</td></tr>
+  <tr><td><strong>Web</strong></td><td>Search the internet, fetch documentation</td></tr>
+  <tr><td><strong>Subagents</strong></td><td>Spawn specialized agents for parallel/isolated work</td></tr>
+  <tr><td><strong>MCP</strong></td><td>Connect to GitHub, Slack, databases, and more</td></tr>
+  <tr><td><strong>Browser</strong></td><td>Automate Chrome with <code>--chrome</code></td></tr>
+</table>
+
+
+<h2 id="slash-commands">Slash Commands</h2>
+<table>
+  <tr><th>Command</th><th>Purpose</th></tr>
+  <tr><td><code>/model</code></td><td>Switch between Opus, Sonnet, Haiku</td></tr>
+  <tr><td><code>/continue</code></td><td>Resume previous session</td></tr>
+  <tr><td><code>/clear</code></td><td>Fresh start</td></tr>
+  <tr><td><code>/compact</code></td><td>Compress context to free space</td></tr>
+  <tr><td><code>/context</code></td><td>See what's consuming context window</td></tr>
+  <tr><td><code>/cost</code></td><td>Token usage and costs</td></tr>
+  <tr><td><code>/memory</code></td><td>View/edit persistent auto memory</td></tr>
+  <tr><td><code>/init</code></td><td>Generate CLAUDE.md for your project</td></tr>
+  <tr><td><code>/undo</code></td><td>Revert last code change</td></tr>
+  <tr><td><code>/export [file]</code></td><td>Export conversation as text</td></tr>
+  <tr><td><code>/hooks</code></td><td>Configure automation hooks</td></tr>
+  <tr><td><code>/mcp</code></td><td>Manage MCP server connections</td></tr>
+  <tr><td><code>/agents</code></td><td>Create/manage custom subagents</td></tr>
+  <tr><td><code>/plugins</code></td><td>Browse and install plugins</td></tr>
+  <tr><td><code>/doctor</code></td><td>Diagnose configuration issues</td></tr>
+  <tr><td><code>/help</code></td><td>Help menu</td></tr>
+</table>
+
+
+<h2 id="keyboard-shortcuts">Keyboard Shortcuts</h2>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><span class="key">Enter</span></td><td>Submit message</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">C</span></td><td>Interrupt / cancel</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">D</span></td><td>Exit Claude Code</td></tr>
+  <tr><td><span class="key">Shift</span><span class="separator">+</span><span class="key">Tab</span></td><td>Cycle permission modes</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">P</span></td><td>Model picker</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">T</span></td><td>Toggle thinking / task list</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">G</span></td><td>Open external editor for prompts</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">O</span></td><td>Toggle verbose transcript</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">V</span></td><td>Paste image (Alt+V on Windows)</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">_</span></td><td>Undo last action</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">R</span></td><td>Search command history</td></tr>
+  <tr><td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">B</span></td><td>Background current task</td></tr>
+  <tr><td><span class="key">Up</span> / <span class="key">Down</span></td><td>Navigate history</td></tr>
+</table>
+
+<p>Customize keybindings in <code>~/.claude/keybindings.json</code>. Supports chords like <code>ctrl+k ctrl+s</code>.</p>
+
+
+<h2 id="permission-modes">Permission Modes</h2>
+<p>Cycle with <span class="key">Shift</span><span class="separator">+</span><span class="key">Tab</span>:</p>
+<table>
+  <tr><th>Mode</th><th>Behavior</th></tr>
+  <tr><td><strong>Default</strong></td><td>Ask permission for edits and commands</td></tr>
+  <tr><td><strong>Auto-accept edits</strong></td><td>File edits proceed without asking; commands still ask</td></tr>
+  <tr><td><strong>Plan mode</strong></td><td>Read-only &mdash; Claude can search and analyze but cannot change anything</td></tr>
+</table>
+
+
+<!-- ==================== CONFIGURATION ==================== -->
+
+<h2 id="claude-md">CLAUDE.md Files</h2>
+<p>Persistent instructions that Claude loads every session. Three layers (higher wins):</p>
+<table>
+  <tr><th>File</th><th>Scope</th><th>Shared?</th></tr>
+  <tr><td><code>.claude/CLAUDE.md</code></td><td>Project</td><td>Yes (git)</td></tr>
+  <tr><td><code>.claude/CLAUDE.local.md</code></td><td>Project, personal</td><td>No</td></tr>
+  <tr><td><code>~/.claude/CLAUDE.md</code></td><td>User (all projects)</td><td>No</td></tr>
+  <tr><td>System-wide path</td><td>Organization</td><td>Admin-deployed</td></tr>
+</table>
+
+<h3>Example CLAUDE.md</h3>
+<pre><code># Build &amp; Test
+- Build: `npm run build`
+- Test: `npm test`
+- Dev: `npm run dev` (http://localhost:3000)
+
+# Code Standards
+- TypeScript strict mode, 2-space indent
+- Always run tests before committing
+
+# Architecture
+- /src/routes/ &mdash; HTTP endpoints
+- /src/services/ &mdash; Business logic
+- /src/db/ &mdash; Database layer</code></pre>
+
+<div class="callout tip">
+  <div class="callout-title">Import external files</div>
+  Use <code>@README.md</code> or <code>@docs/testing-guide.md</code> in CLAUDE.md to reference other files.
+</div>
+
+
+<h2 id="settings">settings.json</h2>
+<p>Configuration lives in <code>settings.json</code> at multiple scopes:</p>
+<table>
+  <tr><th>File</th><th>Scope</th></tr>
+  <tr><td><code>.claude/settings.json</code></td><td>Project (shared via git)</td></tr>
+  <tr><td><code>.claude/settings.local.json</code></td><td>Project (local only)</td></tr>
+  <tr><td><code>~/.claude/settings.json</code></td><td>User (all projects)</td></tr>
+</table>
+<pre><code>{
+  "model": "claude-opus-4-6",
+  "env": {
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "50000"
+  },
+  "permissions": {
+    "allow": ["Bash(npm test)", "Bash(git *)", "Read", "Edit"],
+    "deny": ["Bash(rm -rf)"]
+  },
+  "hooks": { ... },
+  "autoMemoryEnabled": true
+}</code></pre>
+
+
+<h2 id="permissions">Permissions (Allow / Deny)</h2>
+<p>Control which tools Claude can use without asking:</p>
+<pre><code>{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",     // Exact match
+      "Bash(git *)",        // Wildcard
+      "Read",               // All reads
+      "Edit"                // All edits
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force)"
+    ]
+  }
+}</code></pre>
+
+
+<!-- ==================== HOOKS ==================== -->
+
+<h2 id="hooks-why">Hooks: Why They Exist</h2>
+<p>Claude is intelligent but <strong>not deterministic</strong>. You can't rely on an LLM always remembering to run Prettier, or never touching <code>.env</code> files. Hooks solve this by giving you <strong>deterministic control at every lifecycle point</strong> &mdash; shell commands that fire automatically at specific events.</p>
+
+<div class="callout">
+  <div class="callout-title">The mental model</div>
+  <strong>CLAUDE.md</strong> = "Here's how I want you to work" (suggestions)<br>
+  <strong>Permissions</strong> = "Here's what you CAN use" (access control)<br>
+  <strong>Hooks</strong> = "Here's what MUST happen" (enforcement)
+</div>
+
+<p><strong>Rule of thumb:</strong> If it must <em>always</em> happen (or <em>never</em> happen), use a hook. If it requires judgment, use instructions.</p>
+
+
+<h2 id="hooks-events">All Hook Events</h2>
+
+<div class="lifecycle"><span class="note">You open Claude Code</span>
+  <span class="event">SessionStart</span> (startup)
+
+<span class="note">You type a message and press Enter</span>
+  <span class="event">UserPromptSubmit</span>
+
+<span class="note">Claude decides to read a file</span>
+  <span class="event">PreToolUse</span> (Read)          <span class="action">&larr; Can block!</span>
+      <span class="note">Tool executes...</span>
+  <span class="event">PostToolUse</span> (Read)         <span class="action">&larr; Can react</span>
+
+<span class="note">Claude decides to edit a file</span>
+  <span class="event">PreToolUse</span> (Edit)          <span class="action">&larr; Can block!</span>
+      <span class="note">Permission needed?</span>
+      <span class="event">PermissionRequest</span>        <span class="action">&larr; Can auto-approve/deny</span>
+      <span class="note">Tool executes...</span>
+  <span class="event">PostToolUse</span> (Edit)         <span class="action">&larr; Run formatter, linter</span>
+  <span class="note">(or)</span>
+  <span class="event">PostToolUseFailure</span> (Edit)  <span class="action">&larr; Log error, alert</span>
+
+<span class="note">Claude spawns a subagent</span>
+  <span class="event">SubagentStart</span>
+      <span class="note">Subagent works...</span>
+  <span class="event">SubagentStop</span>
+
+<span class="note">Claude finishes its response</span>
+  <span class="event">Stop</span>                       <span class="action">&larr; Verify work, force continue</span>
+
+<span class="note">Context getting full...</span>
+  <span class="event">PreCompact</span>                 <span class="action">&larr; Save state</span>
+
+<span class="note">Settings file changes</span>
+  <span class="event">ConfigChange</span>
+
+<span class="note">You close the session</span>
+  <span class="event">SessionEnd</span></div>
+
+<table>
+  <tr><th>Event</th><th>When It Fires</th><th>Matcher Matches On</th></tr>
+  <tr><td><code>SessionStart</code></td><td>Session begins or resumes</td><td><code>startup</code>, <code>resume</code>, <code>clear</code>, <code>compact</code></td></tr>
+  <tr><td><code>UserPromptSubmit</code></td><td>You submit a prompt</td><td>(none)</td></tr>
+  <tr><td><code>PreToolUse</code></td><td>Before any tool executes</td><td>Tool name: <code>Bash</code>, <code>Edit</code>, <code>mcp__*</code></td></tr>
+  <tr><td><code>PermissionRequest</code></td><td>Permission dialog about to show</td><td>Tool name</td></tr>
+  <tr><td><code>PostToolUse</code></td><td>After tool succeeds</td><td>Tool name</td></tr>
+  <tr><td><code>PostToolUseFailure</code></td><td>After tool fails</td><td>Tool name</td></tr>
+  <tr><td><code>Notification</code></td><td>Claude needs attention</td><td><code>permission_prompt</code>, <code>idle_prompt</code></td></tr>
+  <tr><td><code>Stop</code></td><td>Claude finishes responding</td><td>(none)</td></tr>
+  <tr><td><code>SubagentStart</code> / <code>Stop</code></td><td>Subagent lifecycle</td><td>Agent type</td></tr>
+  <tr><td><code>ConfigChange</code></td><td>Settings file changes</td><td><code>user_settings</code>, <code>project_settings</code></td></tr>
+  <tr><td><code>PreCompact</code></td><td>Before context compaction</td><td><code>manual</code>, <code>auto</code></td></tr>
+  <tr><td><code>SessionEnd</code></td><td>Session terminates</td><td><code>clear</code>, <code>logout</code>, etc.</td></tr>
+</table>
+
+
+<h2 id="hooks-protocol">The Exit Code Protocol</h2>
+<p>This is the key to understanding hooks:</p>
+<table>
+  <tr><th>Exit Code</th><th>Meaning</th><th>Effect</th></tr>
+  <tr><td><span class="badge badge-green">0</span></td><td>Allow / proceed</td><td>stdout = inject context (for SessionStart, UserPromptSubmit)</td></tr>
+  <tr><td><span class="badge badge-red">2</span></td><td>Block / deny</td><td>stderr = feedback sent to Claude explaining why</td></tr>
+  <tr><td><span class="badge badge-yellow">other</span></td><td>Proceed anyway</td><td>stderr logged, no blocking</td></tr>
+</table>
+
+<h3>Hook Types</h3>
+<table>
+  <tr><th>Type</th><th>How It Works</th></tr>
+  <tr><td><code>command</code></td><td>Run a shell command. Receives JSON on stdin.</td></tr>
+  <tr><td><code>http</code></td><td>POST to a URL. Returns JSON with <code>hookSpecificOutput</code>.</td></tr>
+  <tr><td><code>prompt</code></td><td>Ask a fast LLM (Haiku) to validate something.</td></tr>
+  <tr><td><code>agent</code></td><td>Spawn a subagent for verification.</td></tr>
+</table>
+
+
+<h2 id="hooks-config">Hook Configuration Format</h2>
+<pre><code>{
+  "hooks": {
+    "EventName": [
+      {
+        "matcher": "regex_pattern",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "your-shell-command",
+            "timeout": 30,
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+
+<p>Matchers use regex: <code>Edit|Write</code> matches both tools. <code>mcp__github__.*</code> matches all GitHub MCP tools. Empty string <code>""</code> matches everything.</p>
+
+
+<h2 id="hooks-recipes">Hook Recipes</h2>
+
+<h3>Auto-format with Prettier after edits</h3>
+<pre><code>{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Edit|Write",
+      "hooks": [{
+        "type": "command",
+        "command": "jq -r '.tool_input.file_path' | xargs npx prettier --write 2>/dev/null; exit 0"
+      }]
+    }]
+  }
+}</code></pre>
+
+<h3>Block dangerous commands</h3>
+<pre><code>#!/bin/bash
+# .claude/hooks/safety-check.sh
+INPUT=$(cat)
+CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+
+if echo "$CMD" | grep -qE '(rm -rf /|DROP TABLE|git push --force)'; then
+  echo "Blocked: dangerous command" &gt;&amp;2
+  exit 2   # BLOCK
+fi
+exit 0     # ALLOW</code></pre>
+
+<h3>Desktop notifications</h3>
+<pre><code>{
+  "hooks": {
+    "Notification": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "notify-send 'Claude Code' 'Needs your attention!'"
+      }]
+    }]
+  }
+}</code></pre>
+
+<h3>Re-inject context after compaction</h3>
+<pre><code>{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "compact",
+      "hooks": [{
+        "type": "command",
+        "command": "echo 'REMINDER: Use bun not npm. Current sprint: auth-refactor.'"
+      }]
+    }]
+  }
+}</code></pre>
+
+<h3>Force Claude to keep working until tests pass</h3>
+<pre><code>{
+  "hooks": {
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "ACTIVE=$(cat | jq -r '.stop_hook_active'); [ \"$ACTIVE\" = true ] &amp;&amp; exit 0; npm test &amp;&gt;/dev/null || (echo 'Tests still failing' &gt;&amp;2 &amp;&amp; exit 2); exit 0"
+      }]
+    }]
+  }
+}</code></pre>
+
+<h3>Protect sensitive files</h3>
+<pre><code>{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Edit|Write",
+      "hooks": [{
+        "type": "command",
+        "command": "FILE=$(cat | jq -r '.tool_input.file_path'); case \"$FILE\" in *.env*|*secret*|*credential*) echo \"Protected file\" &gt;&amp;2; exit 2;; esac; exit 0"
+      }]
+    }]
+  }
+}</code></pre>
+
+
+<!-- ==================== MEMORY ==================== -->
+
+<h2 id="auto-memory">Auto Memory</h2>
+<p>Auto memory is Claude <strong>taking notes for itself</strong> across sessions. As it works with you, it automatically saves useful patterns, commands, architecture insights, and debugging tricks to disk &mdash; so next session, it already "knows" your project.</p>
+
+<h3>What gets saved</h3>
+<ul>
+  <li>Build/test commands discovered</li>
+  <li>Debugging patterns and workarounds</li>
+  <li>Architecture insights from conversations</li>
+  <li>Code style preferences inferred from corrections</li>
+  <li>Environment setup quirks</li>
+</ul>
+
+<h3>What doesn't get saved</h3>
+<ul>
+  <li>General programming knowledge (Claude already knows)</li>
+  <li>Temporary one-off debugging steps</li>
+  <li>Secrets or credentials (never!)</li>
+  <li>Session-specific context that won't matter tomorrow</li>
+</ul>
+
+<h3>Where it lives</h3>
+<pre><code>~/.claude/projects/&lt;project-key&gt;/memory/
+  MEMORY.md          &larr; Index (first 200 lines auto-loaded)
+  debugging.md       &larr; Topic file (read on demand)
+  architecture.md    &larr; Topic file
+  ...</code></pre>
+
+<p>Project-scoped, machine-local, not synced across machines.</p>
+
+<h3>Interact with it</h3>
+<ul>
+  <li><code>/memory</code> &mdash; View, toggle, open folder</li>
+  <li>"Remember that we always use bun" &mdash; Claude saves it immediately</li>
+  <li>"Forget the Redis note" &mdash; Claude finds and removes it</li>
+  <li>Edit files directly: <code>~/.claude/projects/&lt;project&gt;/memory/</code></li>
+</ul>
+
+<h3>Disable</h3>
+<pre><code>// In settings.json:
+{ "autoMemoryEnabled": false }</code></pre>
+
+
+<h2 id="memory-vs-claude-md">Memory vs CLAUDE.md</h2>
+<table>
+  <tr><th></th><th>CLAUDE.md</th><th>Auto Memory</th></tr>
+  <tr><td><strong>Who writes it</strong></td><td>You</td><td>Claude</td></tr>
+  <tr><td><strong>Purpose</strong></td><td>"Here's how I want you to work"</td><td>"Here's what you learned last time"</td></tr>
+  <tr><td><strong>Nature</strong></td><td>Prescriptive (rules)</td><td>Descriptive (knowledge)</td></tr>
+  <tr><td><strong>Loaded</strong></td><td>Full file, every session</td><td>First 200 lines only</td></tr>
+  <tr><td><strong>Updated</strong></td><td>Manually</td><td>Continuously</td></tr>
+</table>
+
+
+<h2 id="200-line-limit">The 200-Line Limit</h2>
+<div class="callout warning">
+  <div class="callout-title">Critical to understand</div>
+  Only the first 200 lines of <code>MEMORY.md</code> are loaded at session start. Content beyond line 200 is invisible until Claude explicitly reads it. Keep MEMORY.md as a concise index and move details into topic files.
+</div>
+
+<p><strong>Good pattern:</strong> MEMORY.md = 50-150 line index pointing to topic files. Topic files = deep details, read on demand.</p>
+
+
+<h2 id="context-management">Context Management</h2>
+<ul>
+  <li><code>/context</code> &mdash; See what's consuming space</li>
+  <li><code>/compact [focus]</code> &mdash; Manually compress with optional focus</li>
+  <li>Auto-compaction triggers at ~95% capacity</li>
+  <li><code>/export</code> after compaction gives the <strong>compacted version</strong> only</li>
+</ul>
+
+<div class="callout danger">
+  <div class="callout-title">Export before compaction!</div>
+  <code>/export</code> after compaction gives you the summary, not the original messages. Export periodically during long sessions, or use <code>/context</code> to monitor usage.
+</div>
+
+
+<!-- ==================== ADVANCED ==================== -->
+
+<h2 id="subagents">Subagents</h2>
+<p>Specialized AI assistants that handle tasks in isolated contexts.</p>
+<table>
+  <tr><th>Type</th><th>Model</th><th>Tools</th><th>Best For</th></tr>
+  <tr><td><strong>Explore</strong></td><td>Haiku</td><td>Read-only</td><td>Fast codebase search</td></tr>
+  <tr><td><strong>Plan</strong></td><td>Inherits</td><td>Read-only</td><td>Research &amp; architecture</td></tr>
+  <tr><td><strong>General-purpose</strong></td><td>Inherits</td><td>All</td><td>Complex multi-step work</td></tr>
+</table>
+
+<h3>Custom subagents</h3>
+<p>Create <code>.claude/agents/my-agent.md</code>:</p>
+<pre><code>---
+name: code-reviewer
+description: Review code for quality
+tools: Read, Grep, Glob
+model: sonnet
+memory: user          # Persistent learning!
+maxTurns: 10
+---
+
+You are a code reviewer. Analyze code for quality,
+security, and best practices.</code></pre>
+
+<div class="callout tip">
+  <div class="callout-title">Subagent persistent memory</div>
+  Set <code>memory: user</code> to let subagents learn across sessions. A code reviewer that gets better over time!
+</div>
+
+
+<h2 id="mcp">MCP Servers (Integrations)</h2>
+<p>Model Context Protocol connects Claude to external tools.</p>
+
+<pre><code># HTTP (recommended)
+claude mcp add --transport http github https://api.githubcopilot.com/mcp/
+
+# Local stdio
+claude mcp add --transport stdio postgres -- npx @anthropic/postgres-mcp
+
+# With env vars
+claude mcp add --transport stdio --env DATABASE_URL=postgres://... db -- npx server
+
+# Manage
+claude mcp list
+claude mcp remove github</code></pre>
+
+<p>Use <code>@server:resource</code> syntax to reference MCP resources in prompts.</p>
+
+
+<h2 id="skills">Skills</h2>
+<p>Reusable commands and workflows, invoked with <code>/skill-name</code>.</p>
+<pre><code># .claude/skills/run-tests/SKILL.md
+---
+name: run-tests
+description: Run the test suite
+---
+
+Run `npm test` and report results clearly.</code></pre>
+
+<h3>Dynamic context injection</h3>
+<pre><code>---
+name: pr-analysis
+description: Analyze current PR
+---
+
+## Context
+- PR diff: !`gh pr diff`
+- PR comments: !`gh pr view --comments`
+
+Analyze these changes...</code></pre>
+<p>The <code>!</code>command<code></code> syntax executes before Claude sees the prompt.</p>
+
+<h3>Positional arguments</h3>
+<pre><code>---
+name: migrate
+description: Migrate component between frameworks
+---
+
+Migrate $0 from $1 to $2.</code></pre>
+<p>Running <code>/migrate Button React Vue</code> expands to "Migrate Button from React to Vue."</p>
+
+
+<h2 id="plan-mode">Plan Mode</h2>
+<p>Read-only exploration &mdash; Claude can search and analyze but won't change anything.</p>
+<ul>
+  <li>Activate: <span class="key">Shift</span><span class="separator">+</span><span class="key">Tab</span> twice</li>
+  <li>Or: <code>claude --permission-mode plan</code></li>
+  <li>Perfect for: understanding before acting, complex refactors, architectural analysis</li>
+</ul>
+
+
+<h2 id="worktrees">Git Worktrees</h2>
+<p>Run parallel Claude sessions on separate branches:</p>
+<pre><code>claude --worktree feature-auth    # Isolated git worktree
+claude -w                         # Auto-named worktree</code></pre>
+<p>Each worktree gets its own directory, branch, and file isolation. Changes don't collide.</p>
+
+<p>Subagents can use them too:</p>
+<pre><code>---
+name: parallel-refactor
+isolation: worktree
+---</code></pre>
+
+
+<h2 id="ide">IDE Integrations</h2>
+<table>
+  <tr><th>IDE</th><th>Install</th><th>Key Features</th></tr>
+  <tr><td><strong>VS Code</strong></td><td>Extensions marketplace: "Claude Code"</td><td>Inline diffs, file refs, plan mode, git integration</td></tr>
+  <tr><td><strong>JetBrains</strong></td><td>Settings &rarr; Plugins &rarr; "Claude Code"</td><td>Diff viewing, selection context, remote dev support</td></tr>
+  <tr><td><strong>Desktop App</strong></td><td>Download from claude.ai</td><td>Visual diff review, multi-session, background tasks</td></tr>
+  <tr><td><strong>Web</strong></td><td>claude.ai/code</td><td>Cloud-based, no local setup, mobile support</td></tr>
+</table>
+
+
+<!-- ==================== POWER USER ==================== -->
+
+<h2 id="hidden-gems">Hidden Gems &amp; Overlooked Features</h2>
+
+<h3>1. Checkpoint + Summarize Strategy</h3>
+<p>Press <span class="key">Esc</span> twice to open the rewind menu, then "Summarize from here." This compresses only from a point forward while keeping early context intact &mdash; unlike <code>/compact</code> which compresses everything.</p>
+
+<h3>2. Subagent Persistent Memory</h3>
+<p>Subagents can learn across sessions with <code>memory: user</code>. A code reviewer that builds institutional knowledge over time.</p>
+
+<h3>3. MCP Tool Search (Dynamic Loading)</h3>
+<p>When you have many MCP servers, tools consume context. Tool Search loads them on demand:</p>
+<pre><code>ENABLE_TOOL_SEARCH=auto:5 claude    # Activate at 5% context</code></pre>
+
+<h3>4. Skills with Dynamic Context</h3>
+<p>The <code>!</code>command<code></code> syntax in skills executes shell commands and injects output into the prompt before Claude processes it.</p>
+
+<h3>5. <code>--append-system-prompt</code> vs <code>--system-prompt</code></h3>
+<pre><code># WRONG: loses all Claude Code defaults
+claude --system-prompt "You are a Python expert"
+
+# RIGHT: adds to defaults
+claude --append-system-prompt "Always use type hints"</code></pre>
+
+<h3>6. Structured JSON Output</h3>
+<pre><code>claude -p --output-format json "list endpoints"
+claude -p --json-schema '{"type":"object",...}' "extract data"</code></pre>
+
+<h3>7. Multi-Directory Work</h3>
+<pre><code>claude --add-dir ../shared-lib --add-dir ../api</code></pre>
+<p>Claude sees and works across all specified directories.</p>
+
+<h3>8. Piping Into Claude</h3>
+<pre><code>git diff | claude -p "Review for security issues"
+cat error.log | claude -p "What went wrong?"</code></pre>
+
+<h3>9. Budget Control</h3>
+<pre><code>claude -p --max-budget-usd 5 "refactor auth module"</code></pre>
+
+<h3>10. <code>disable-model-invocation</code> in Skills</h3>
+<table>
+  <tr><th>Setting</th><th>You invoke</th><th>Claude invokes</th></tr>
+  <tr><td>(default)</td><td>Yes (<code>/skill</code>)</td><td>Yes</td></tr>
+  <tr><td><code>disable-model-invocation: true</code></td><td>Yes (<code>/skill</code>)</td><td>No</td></tr>
+  <tr><td><code>user-invocable: false</code></td><td>No</td><td>Yes (background knowledge)</td></tr>
+</table>
+
+
+<h2 id="headless">Headless / SDK Mode</h2>
+<pre><code># Non-interactive with JSON output
+claude -p --output-format json --no-session-persistence "task"
+
+# Streaming for real-time processing
+claude -p --output-format stream-json --verbose "task"
+
+# With schema validation
+claude -p --json-schema '{"type":"object",...}' "extract data"</code></pre>
+
+
+<h2 id="cli-reference">CLI Reference</h2>
+<pre><code># Session management
+claude                              # Interactive
+claude "task"                       # With prompt
+claude -c                           # Continue last
+claude -r "name" "prompt"           # Resume specific
+
+# Key flags
+--model sonnet|opus|haiku           # Choose model
+--permission-mode plan              # Read-only
+--add-dir ../other                  # Extra directories
+--chrome                            # Browser automation
+--max-turns 5                       # Limit loops
+--append-system-prompt "text"       # Add instructions
+--output-format json|text|stream-json
+
+# Auth
+claude auth login|logout|status
+
+# MCP
+claude mcp add|list|get|remove
+
+# Updates
+claude update</code></pre>
+
+
+<h2 id="tips">Tips &amp; Best Practices</h2>
+<ol>
+  <li><strong>Start with <code>/init</code></strong> to create a CLAUDE.md for your project</li>
+  <li><strong>Use Plan mode first</strong> for complex tasks &mdash; understand before changing</li>
+  <li><strong>Keep CLAUDE.md under 200 lines</strong> &mdash; link to external files</li>
+  <li><strong>Use subagents</strong> for verbose operations to protect context</li>
+  <li><strong>Set up hooks</strong> for formatting, linting, notifications</li>
+  <li><strong>Export periodically</strong> in long sessions before compaction</li>
+  <li><strong>Monitor context</strong> with <code>/context</code> and <code>/cost</code></li>
+  <li><strong>Use <code>/undo</code> fearlessly</strong> &mdash; Claude tracks all changes</li>
+  <li><strong>Pipe data in</strong> for quick analysis: <code>git diff | claude -p "review"</code></li>
+  <li><strong>Use worktrees</strong> for parallel feature development</li>
+</ol>
+
+
+<!-- ==================== ANDROID / TERMUX ==================== -->
+
+<h2 id="android-overview">Running Claude Code on Android (Termux)</h2>
+
+<p>Yes, Claude Code runs on your phone. It took hours of troubleshooting to figure out &mdash; here's everything you need to know, distilled into a guide and a one-command setup script.</p>
+
+<div class="callout tip">
+  <div class="callout-title">The Fast Way (One-Command Script)</div>
+  <p>Download <a href="setup-claude-termux.sh"><code>setup-claude-termux.sh</code></a> (included with this guide), copy it to Termux, and run:</p>
+<pre><code>cp ~/storage/downloads/setup-claude-termux.sh ~/
+chmod +x ~/setup-claude-termux.sh
+./setup-claude-termux.sh</code></pre>
+  <p>The script handles everything: updates packages, installs Node.js, Python, proot, Claude Code, configures your shell, sets up Android storage access, and launches Claude Code at the end.</p>
+  <ul>
+    <li><code>--all</code> &mdash; Install everything without questions</li>
+    <li><code>--status</code> &mdash; See what's already installed</li>
+    <li><code>--help</code> &mdash; All options</li>
+  </ul>
+  <p>Safe to re-run anytime. It detects what's already there and skips it.</p>
+</div>
+
+<p>If you want to understand what's happening under the hood, or if something goes wrong, read on.</p>
+
+
+<h2 id="android-install">Step-by-Step Installation</h2>
+
+<h3>Step 1: Get Termux (Not From Play Store!)</h3>
+
+<p>The Play Store version has been <strong>abandoned since 2020</strong>. You need the GitHub release.</p>
+
+<p>Go to: <a href="https://github.com/termux/termux-app/releases">github.com/termux/termux-app/releases</a></p>
+
+<p>Download the <strong>RELEASE</strong> build, not debug:</p>
+<pre><code>termux-app_v0.119.0+github-release_arm64-v8a.apk    &larr; THIS ONE
+termux-app_v0.119.0+github-debug_arm64-v8a.apk      &larr; NOT this</code></pre>
+
+<div class="callout warning">
+  <div class="callout-title">"App not installed" with no explanation?</div>
+  Google Play Protect is silently blocking it.<br>
+  <strong>Fix:</strong> Play Store &rarr; Profile &rarr; Play Protect &rarr; Settings &rarr; Turn OFF "Scan apps with Play Protect"<br>
+  You can re-enable it after installing Termux.
+</div>
+
+<h3>Step 2: The Chicken-and-Egg Problem</h3>
+
+<p>Termux installed, but <code>curl</code> gives SSL errors. And <code>pkg</code> needs <code>curl</code>. Classic.</p>
+
+<p>Run this <strong>immediately</strong> after first launch:</p>
+<pre><code>termux-change-repo</code></pre>
+
+<p>Select a mirror, then:</p>
+<pre><code>pkg update && pkg upgrade -y</code></pre>
+
+<p>Say <strong>Y</strong> to all config prompts. This syncs your libraries properly.</p>
+
+<h3>Step 3: Install Claude Code</h3>
+
+<div class="callout danger">
+  <div class="callout-title">Don't use the official curl install script!</div>
+  It downloads a linux-arm64 binary that doesn't work in Termux. Use npm instead.
+</div>
+
+<pre><code>pkg install nodejs -y
+npm install -g @anthropic-ai/claude-code</code></pre>
+
+
+<h2 id="android-tmp">Step 4: The /tmp Problem (Critical!)</h2>
+
+<p>This is where most people get stuck. Claude Code tries to create directories under <code>/tmp</code>, but on Termux, <strong>/tmp is read-only</strong>. You'll see errors like:</p>
+
+<pre><code>ENOENT: no such file or directory, mkdir '/tmp'
+EACCES: permission denied</code></pre>
+
+<div class="callout danger">
+  <div class="callout-title">The catch-22</div>
+  You can't fix this from INSIDE Claude Code because the Bash tool is what's broken. You have to fix it before launching.
+</div>
+
+<p>The fix is <strong>proot</strong>, which maps a writable directory onto <code>/tmp</code>:</p>
+
+<pre><code>pkg install proot
+proot -b /data/data/com.termux/files/usr/tmp:/tmp claude</code></pre>
+
+<p>To make this permanent, add an alias to your <code>.bashrc</code>:</p>
+
+<pre><code>echo "alias claude='proot -b /data/data/com.termux/files/usr/tmp:/tmp claude'" >> ~/.bashrc
+source ~/.bashrc</code></pre>
+
+<p>Now you just type <code>claude</code> and proot handles everything behind the scenes.</p>
+
+<h3>Step 5: Android Storage Access</h3>
+
+<p>Want Claude Code to save files to your Android Downloads folder?</p>
+
+<pre><code>termux-setup-storage</code></pre>
+
+<p>Tap <strong>Allow</strong> on the permission dialog. Now <code>~/storage/downloads</code> maps to your phone's Downloads.</p>
+
+<h3>Step 6: The Node.js Update Trap</h3>
+
+<div class="callout warning">
+  <div class="callout-title">This one bites hard</div>
+  Termux's <code>pkg</code> can jump major Node.js versions (e.g. v22 to v25) in a single upgrade. When that happens, <strong>ALL globally installed npm packages break silently</strong>. The <code>claude</code> command exists but throws <code>MODULE_NOT_FOUND</code>.
+</div>
+
+<p>Fix: reinstall Claude Code after any Node.js major version bump:</p>
+<pre><code>npm install -g @anthropic-ai/claude-code</code></pre>
+
+<p>The setup script handles this automatically &mdash; it checks if Claude Code actually <em>works</em>, not just if the binary exists.</p>
+
+
+<h2 id="android-extras">Extras &amp; Known Issues</h2>
+
+<h3>Math &amp; Science Packages</h3>
+<p>Claude Code can use these tools directly for computation:</p>
+<pre><code># Math tools
+pkg install pari maxima matplotlib python-scipy
+pip install --break-system-packages sympy
+
+# LaTeX
+pkg install texlive-installer tectonic
+
+# GitHub integration
+pkg install gh
+gh auth login</code></pre>
+
+<h3>Known Issues &amp; Workarounds</h3>
+<table>
+  <tr><th>Issue</th><th>Cause</th><th>Fix</th></tr>
+  <tr>
+    <td><strong>Device full = broken packages</strong></td>
+    <td>Running out of storage during <code>pkg upgrade</code> corrupts package state</td>
+    <td>Free up space first. Need at least 500MB.</td>
+  </tr>
+  <tr>
+    <td><strong>Background tasks fail</strong></td>
+    <td>Even with TMPDIR set, background processes still try <code>/tmp</code></td>
+    <td>The proot alias is the only complete fix.</td>
+  </tr>
+  <tr>
+    <td><strong><code>claude update</code> doesn't work</strong></td>
+    <td>Native updater downloads incompatible binary</td>
+    <td><code>pkg upgrade nodejs && npm install -g @anthropic-ai/claude-code</code></td>
+  </tr>
+  <tr>
+    <td><strong>Android kills Claude Code</strong></td>
+    <td>Android's aggressive background app killing</td>
+    <td>Disable battery optimization for Termux in Android settings</td>
+  </tr>
+  <tr>
+    <td><strong>TMPDIR alone isn't enough</strong></td>
+    <td><code>export TMPDIR=$HOME/tmp</code> fixes some things but not all</td>
+    <td>Use proot instead for complete /tmp mapping</td>
+  </tr>
+</table>
+
+<h3>Why Bother?</h3>
+<p>The real reason: skills, workflows, git repos, and the full agentic loop &mdash; all on your phone. The Claude web interface can't use your custom skills, your CLAUDE.md, your hooks, or your MCP servers. With Termux, you get <strong>full Claude Code</strong>: terminal, git, file editing, subagents, everything. A complete mobile dev &amp; research environment in your pocket.</p>
+
+<div class="callout tip">
+  <div class="callout-title">Pro tip: Parallel research</div>
+  Run a Prometheus research instance on your phone while working on desktop. Use git to sync between them: <code>git stash && git pull && git stash pop</code>
+</div>
+
+
+<!-- ==================== PROMETHEUS ==================== -->
+
+<h2 id="prometheus-analysis">Prometheus v7.2 + Claude Code: Analysis &amp; Recommendations</h2>
+
+<p>After analyzing the Prometheus v7.2 architecture installed at <code>MilleniumProblems/.skills/Prometheus/</code> alongside your Claude Code setup, here's an honest assessment.</p>
+
+<h3>What Prometheus Does Well (Keep Doing)</h3>
+<ul>
+  <li><strong>Cognitive architecture</strong> &mdash; The KERNEL (continuity, anticipation, holism, permission) provides genuine intellectual discipline that Claude Code has no native equivalent for</li>
+  <li><strong>Plugin hook system</strong> &mdash; DETECTION, KNOWN_STATE, TOOLS, STRATEGIES, LENS, CONTEXT &mdash; these are <em>reasoning hooks</em>, not automation hooks. They structure how Claude thinks, not what it executes</li>
+  <li><strong>Domain plugins</strong> &mdash; Mathematics, Physics plugins with KNOWN_STATE prevent rediscovering known results. Claude Code has no domain awareness natively</li>
+  <li><strong>GRIND/FRONTIER/PARALLAX</strong> &mdash; Research protocols with mandatory verification. No Claude Code equivalent</li>
+  <li><strong>State persistence</strong> &mdash; <code>.prometheus/state.md</code> and <code>ledger.md</code> provide structured research continuity that auto-memory can't match</li>
+  <li><strong>Dead-end tracking</strong> &mdash; <code>graveyard.md</code> with failure reasons prevents revisiting closed routes</li>
+</ul>
+
+<h3>Where Prometheus and Claude Code Overlap (Streamline)</h3>
+<table>
+  <tr><th>Feature</th><th>Prometheus</th><th>Claude Code Native</th><th>Recommendation</th></tr>
+  <tr><td>Session memory</td><td><code>state.md</code> + <code>ledger.md</code></td><td>Auto memory + CLAUDE.md</td><td>Keep both &mdash; different purposes (research state vs project knowledge)</td></tr>
+  <tr><td>Boot sequence</td><td>8-step file loading</td><td>CLAUDE.md auto-load + skills</td><td>Consider making Prometheus a Claude Code <strong>skill</strong> with <code>context: fork</code></td></tr>
+  <tr><td>Mode detection</td><td>DETECTION_HEURISTICS.md</td><td>Claude's native classification</td><td>Prometheus adds value here &mdash; keep</td></tr>
+  <tr><td>User preferences</td><td><code>Prometheus.env/user.md</code></td><td>Auto memory + <code>~/.claude/CLAUDE.md</code></td><td>Merge into auto-memory; less duplication</td></tr>
+  <tr><td>Tool recommendations</td><td>TOOLS hook in plugins</td><td>Claude knows tools natively</td><td>Keep for domain-specific tools (PARI/GP)</td></tr>
+</table>
+
+<h3>What You're Missing in Claude Code (Do More Of)</h3>
+<ul>
+  <li><strong>No hooks configured!</strong> Your <code>settings.json</code> has permissions but zero hooks. Add at minimum:
+    <ul>
+      <li><code>Notification</code> hook for desktop alerts</li>
+      <li><code>SessionStart(compact)</code> for context re-injection after compaction</li>
+      <li><code>PreCompact</code> to auto-save Prometheus state before compaction</li>
+    </ul>
+  </li>
+  <li><strong>No custom subagents</strong> &mdash; You could create a <code>math-verifier</code> agent that runs PARI/GP checks</li>
+  <li><strong>No Claude Code skills</strong> (outside Prometheus) &mdash; Your DISTILL, GRIND, etc. live inside Prometheus but could also be native skills</li>
+  <li><strong>Permissions are overly specific</strong> &mdash; Your <code>settings.local.json</code> has 100+ individual Bash command allowances (including full PARI/GP scripts). Use wildcards: <code>"Bash(\"C:\\Program Files (x86)\\Pari64*\")"</code></li>
+  <li><strong>MEMORY.md is over 200 lines</strong> (215) &mdash; Last 15 lines are truncated. Move detailed sections into topic files</li>
+  <li><strong>No MCP servers</strong> &mdash; Consider GitHub MCP for your repos</li>
+</ul>
+
+<h3>Adapting Prometheus for Claude Code</h3>
+<p>Prometheus and Claude Code operate at <strong>different layers</strong>:</p>
+
+<div class="callout">
+  <div class="callout-title">The Layer Model</div>
+  <strong>Claude Code</strong> = Infrastructure (tools, files, permissions, hooks, execution)<br>
+  <strong>Prometheus</strong> = Cognition (how to think, what to verify, when to escalate)<br>
+  They complement rather than compete.
+</div>
+
+<h4>Recommended adaptations:</h4>
+<ol>
+  <li><strong>Add a <code>PreCompact</code> hook</strong> that auto-saves <code>.prometheus/state.md</code> before compaction:
+<pre><code>{
+  "hooks": {
+    "PreCompact": [{
+      "matcher": "auto",
+      "hooks": [{
+        "type": "command",
+        "command": "echo 'Auto-saving Prometheus state before compaction' &gt;&amp;2"
+      }]
+    }]
+  }
+}</code></pre>
+  </li>
+  <li><strong>Add a <code>SessionStart(compact)</code> hook</strong> that re-injects critical Prometheus context:
+<pre><code>{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "compact",
+      "hooks": [{
+        "type": "command",
+        "command": "cat .prometheus/state.md 2>/dev/null || echo 'No Prometheus state found'"
+      }]
+    }]
+  }
+}</code></pre>
+  </li>
+  <li><strong>Wildcard your PARI/GP permissions</strong> instead of individual commands</li>
+  <li><strong>Trim MEMORY.md below 200 lines</strong> &mdash; move YM paper details, NS proof details, etc. into topic files</li>
+  <li><strong>Consider Prometheus commands as Claude Code skills</strong> &mdash; <code>/grind</code>, <code>/frontier</code>, <code>/parallax</code> could be standalone skills that load the relevant Prometheus plugin on demand</li>
+</ol>
+
+<h3>What to Do Less Of</h3>
+<ul>
+  <li><strong>Stop accumulating one-off Bash permissions</strong> &mdash; your settings file has full PARI/GP scripts as individual allow entries. Use patterns instead.</li>
+  <li><strong>Reduce Prometheus boot overhead</strong> &mdash; 8 files loaded at boot consumes significant context. Consider lazy loading: boot KERNEL only, load plugins on demand via skills.</li>
+  <li><strong>Don't duplicate state</strong> &mdash; <code>Prometheus.env/user.md</code> + auto-memory <code>MEMORY.md</code> + <code>.prometheus/state.md</code> = three places for similar info. Consolidate.</li>
+</ul>
+
+<footer>
+  <p>Generated by Claude Code (Opus 4.6) &mdash; March 2026</p>
+  <p>From a deep-dive conversation covering installation, features, hooks, auto memory, hidden gems, and Prometheus integration analysis.</p>
+</footer>
+
+</main>
+
+</body>
+</html>
