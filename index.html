@@ -363,6 +363,7 @@
   <a href="#cost-optimization">Cost Optimization</a>
   <a href="#headless">Headless/SDK Mode</a>
   <a href="#cicd">CI/CD Integration</a>
+  <a href="#yolo-mode">"YOLO Mode"</a>
   <a href="#cli-reference">CLI Reference</a>
   <a href="#tips">Tips &amp; Best Practices</a>
 
@@ -1279,6 +1280,116 @@ git commit -m "$MSG"</code></pre>
   <div class="callout-title">Cost control in CI</div>
   Always use <code>--max-budget-usd</code> in CI pipelines to prevent runaway costs. Use Haiku or Sonnet (not Opus) for automated tasks.
 </div>
+
+
+<h2 id="yolo-mode">"YOLO Mode" (dangerously-skip-permissions)</h2>
+
+<p>"YOLO mode" is the community nickname for Claude Code's full-autonomy flag:</p>
+
+<pre><code>claude --dangerously-skip-permissions</code></pre>
+
+<p>This <strong>skips every permission prompt</strong>. Claude edits files, runs shell commands, deletes things, pushes to git &mdash; all without ever asking. Zero confirmations. Full autonomy.</p>
+
+<div class="callout danger">
+  <div class="callout-title">The flag name IS the warning</div>
+  Anthropic literally named it <code>--dangerously-skip-permissions</code> to make you think twice.
+</div>
+
+<h3>The permission spectrum</h3>
+<table>
+  <tr><th>Mode</th><th>Claude does</th><th>You do</th></tr>
+  <tr>
+    <td><strong>Plan mode</strong><br><code>--permission-mode plan</code></td>
+    <td>Read-only, can't change anything</td>
+    <td>Full control</td>
+  </tr>
+  <tr>
+    <td><strong>Default</strong></td>
+    <td>Asks before edits and commands</td>
+    <td>Approve/deny each action</td>
+  </tr>
+  <tr>
+    <td><strong>Auto-accept edits</strong></td>
+    <td>Edits freely, asks before commands</td>
+    <td>Approve commands only</td>
+  </tr>
+  <tr>
+    <td><strong>"YOLO mode"</strong><br><code>--dangerously-skip-permissions</code></td>
+    <td>Everything, no questions asked</td>
+    <td>Watch</td>
+  </tr>
+</table>
+
+<h3>Why people use it</h3>
+<ul>
+  <li><strong>Speed</strong> &mdash; No interruptions, no clicking "approve" 50 times during a big refactor</li>
+  <li><strong>Trust</strong> &mdash; When you've worked with Claude Code enough to know it handles your project well</li>
+  <li><strong>CI/CD</strong> &mdash; Automated pipelines can't click "approve"</li>
+  <li><strong>Sandbox environments</strong> &mdash; When running in a container/VM where nothing matters</li>
+</ul>
+
+<h3>The risks</h3>
+<ul>
+  <li>Claude could <code>rm -rf</code> something important</li>
+  <li>Could push to main without review</li>
+  <li>Could run destructive database commands</li>
+  <li>Could overwrite uncommitted work</li>
+  <li>Could install packages or modify system files</li>
+  <li>No undo for shell commands (file edits can still be <code>/undo</code>'d)</li>
+</ul>
+
+<h3>The smart middle ground: Pre-approved permissions</h3>
+
+<p>Most power users don't go full YOLO. Instead, they pre-approve safe operations in <code>settings.json</code>:</p>
+
+<pre><code>{
+  "permissions": {
+    "allow": [
+      "Read", "Edit", "Write", "Glob", "Grep",
+      "Bash(npm test)", "Bash(npm run *)",
+      "Bash(git add *)", "Bash(git commit *)",
+      "Bash(git diff *)", "Bash(git status *)",
+      "Bash(git log *)", "Bash(git branch *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push --force *)",
+      "Bash(DROP *)",
+      "Bash(DELETE FROM *)"
+    ]
+  }
+}</code></pre>
+
+<p>This gives you <strong>~90% of the YOLO speed</strong> with guardrails on the dangerous stuff. Claude breezes through reads, edits, tests, and git without asking &mdash; but still pauses before destructive operations.</p>
+
+<div class="callout tip">
+  <div class="callout-title">Best of both worlds: Permissions + Hooks</div>
+  Combine pre-approved permissions with a <code>PreToolUse</code> hook that blocks specific dangerous patterns. You get speed AND safety:
+<pre><code>{
+  "permissions": {
+    "allow": ["Read", "Edit", "Write", "Bash(npm *)", "Bash(git *)"],
+    "deny": ["Bash(git push --force *)"]
+  },
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Bash",
+      "hooks": [{
+        "type": "command",
+        "command": "CMD=$(cat | jq -r '.tool_input.command'); echo \"$CMD\" | grep -qiE '(rm -rf /|drop table|truncate|format)' &amp;&amp; echo 'Blocked' &gt;&amp;2 &amp;&amp; exit 2; exit 0"
+      }]
+    }]
+  }
+}</code></pre>
+</div>
+
+<h3>If you DO go full YOLO</h3>
+<ol>
+  <li><strong>Use a sandbox</strong> &mdash; Container, VM, or at minimum a git branch you can throw away</li>
+  <li><strong>Commit first</strong> &mdash; <code>git commit -am "checkpoint before YOLO"</code></li>
+  <li><strong>Watch the output</strong> &mdash; Don't walk away. YOLO means YOU are the guardrail now</li>
+  <li><strong>Set a budget</strong> &mdash; <code>claude --dangerously-skip-permissions --max-budget-usd 10</code></li>
+  <li><strong>Limit turns</strong> &mdash; <code>claude --dangerously-skip-permissions --max-turns 20</code></li>
+</ol>
 
 
 <h2 id="tips">Tips &amp; Best Practices</h2>
