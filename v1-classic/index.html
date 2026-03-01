@@ -7,522 +7,312 @@
 <style>
   :root {
     --bg: #0d1117;
-    --bg-secondary: #0a0e14;
-    --bg-tertiary: #161b22;
-    --bg-hover: #1c2129;
-    --border: #21262d;
-    --border-bright: #30363d;
-    --text: #c9d1d9;
-    --text-bright: #e6edf3;
-    --text-muted: #656d76;
-    --text-dim: #484f58;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
     --accent: #da7756;
     --accent-light: #e8956e;
-    --accent-dim: #b86544;
+    --link: #58a6ff;
     --green: #3fb950;
-    --green-dim: #238636;
     --yellow: #d29922;
     --red: #f85149;
-    --blue: #58a6ff;
     --purple: #bc8cff;
-    --cyan: #76e4f7;
-    --code-bg: #0d1117;
+    --code-bg: #1a1f2b;
     --nav-width: 280px;
-    --chrome-height: 38px;
   }
-
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'SF Mono', 'Consolas', monospace;
-    background: #000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
     color: var(--text);
     line-height: 1.7;
-    font-size: 13.5px;
-  }
-
-  /* ===== TERMINAL WINDOW CHROME ===== */
-  .terminal-window {
-    max-width: 1500px;
-    margin: 12px auto;
-    border: 1px solid var(--border-bright);
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05);
     display: flex;
-    flex-direction: column;
-    height: calc(100vh - 24px);
+    min-height: 100vh;
   }
 
-  .terminal-chrome {
-    background: linear-gradient(180deg, #2d2d2d 0%, #252525 100%);
-    height: var(--chrome-height);
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    border-bottom: 1px solid #1a1a1a;
-    flex-shrink: 0;
-    user-select: none;
-  }
-
-  .window-dots {
-    display: flex;
-    gap: 8px;
-    margin-right: 16px;
-  }
-
-  .dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-  }
-
-  .dot-red { background: #ff5f57; }
-  .dot-yellow { background: #febc2e; }
-  .dot-green { background: #28c840; }
-
-  .terminal-title {
-    flex: 1;
-    text-align: center;
-    color: #999;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.3px;
-  }
-
-  .terminal-title .path { color: #666; }
-
-  .terminal-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-    background: var(--bg);
-  }
-
-  /* ===== SIDEBAR NAVIGATION ===== */
+  /* Sidebar Navigation */
   nav {
+    position: fixed;
+    top: 0;
+    left: 0;
     width: var(--nav-width);
+    height: 100vh;
+    overflow-y: auto;
     background: var(--bg-secondary);
     border-right: 1px solid var(--border);
-    overflow-y: auto;
-    flex-shrink: 0;
+    padding: 20px 0;
+    z-index: 100;
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
-    padding-bottom: 20px;
   }
 
   nav::-webkit-scrollbar { width: 6px; }
   nav::-webkit-scrollbar-track { background: transparent; }
   nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-  .nav-header {
-    padding: 14px 16px 12px;
+  .nav-logo {
+    padding: 10px 20px 20px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
 
-  .nav-header .prompt {
+  .nav-logo h2 {
+    font-size: 1.1rem;
     color: var(--accent);
-    font-weight: 600;
-    font-size: 13px;
+    letter-spacing: 0.5px;
   }
 
-  .nav-header .cursor {
-    display: inline-block;
-    width: 8px;
-    height: 15px;
-    background: var(--accent);
-    margin-left: 4px;
-    vertical-align: middle;
-    animation: blink 1.2s step-end infinite;
-  }
-
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
-  }
-
-  .nav-header .info {
-    color: var(--text-dim);
-    font-size: 10.5px;
-    margin-top: 4px;
-    letter-spacing: 0.3px;
+  .nav-logo .version {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
   }
 
   nav a {
     display: block;
-    padding: 4px 16px;
+    padding: 6px 20px;
     color: var(--text-muted);
     text-decoration: none;
-    font-size: 12px;
-    transition: all 0.1s;
-    border-left: 2px solid transparent;
+    font-size: 0.85rem;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
   }
 
   nav a:hover {
-    color: var(--text-bright);
-    background: var(--bg-hover);
-    border-left-color: var(--accent-dim);
+    color: var(--text);
+    background: var(--bg-tertiary);
+    border-left-color: var(--accent);
   }
 
   nav a.section-header {
-    color: var(--accent-dim);
+    color: var(--text);
     font-weight: 600;
-    font-size: 10.5px;
+    font-size: 0.8rem;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-top: 14px;
-    padding-top: 10px;
-    padding-bottom: 6px;
+    letter-spacing: 0.5px;
+    margin-top: 15px;
+    padding-top: 12px;
     border-top: 1px solid var(--border);
     cursor: default;
     pointer-events: none;
   }
 
-  nav a.section-header:first-child { border-top: none; margin-top: 6px; }
+  nav a.section-header:first-child { border-top: none; margin-top: 0; }
 
-  nav a::before {
-    content: '>';
-    color: var(--text-dim);
-    margin-right: 6px;
-    font-weight: 400;
-  }
-
-  nav a.section-header::before { content: '#'; color: var(--accent-dim); }
-
-  /* ===== MAIN CONTENT ===== */
+  /* Main Content */
   main {
+    margin-left: var(--nav-width);
     flex: 1;
-    overflow-y: auto;
-    padding: 30px 50px 100px;
-    max-width: 860px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
+    max-width: 900px;
+    padding: 40px 50px 100px;
   }
 
-  main::-webkit-scrollbar { width: 8px; }
-  main::-webkit-scrollbar-track { background: transparent; }
-  main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-  /* Title area */
-  .title-block {
-    margin-bottom: 36px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .title-block h1 {
-    font-size: 1.6rem;
-    font-weight: 700;
+  h1 {
+    font-size: 2.2rem;
+    margin-bottom: 8px;
     color: var(--accent);
-    margin-bottom: 6px;
-    letter-spacing: -0.5px;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 15px;
   }
 
-  .title-block .subtitle {
+  .subtitle {
     color: var(--text-muted);
-    font-size: 12px;
-    line-height: 1.5;
+    font-size: 1rem;
+    margin-bottom: 40px;
   }
 
-  /* Section headers - terminal prompt style */
   h2 {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-bright);
-    margin-top: 44px;
-    margin-bottom: 18px;
-    padding: 10px 14px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    border-left: 3px solid var(--accent);
-    scroll-margin-top: 20px;
+    font-size: 1.5rem;
+    margin-top: 50px;
+    margin-bottom: 20px;
+    color: var(--text);
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
   }
 
-  h2::before {
-    content: '~/claude-code $ ';
-    color: var(--accent-dim);
-    font-weight: 400;
-  }
-
-  h2:first-of-type { margin-top: 0; }
+  h2:first-of-type { border-top: none; padding-top: 0; }
 
   h3 {
-    font-size: 13px;
-    font-weight: 600;
-    margin-top: 24px;
-    margin-bottom: 10px;
-    color: var(--green);
-    letter-spacing: 0.2px;
-  }
-
-  h3::before {
-    content: '## ';
-    color: var(--green-dim);
+    font-size: 1.15rem;
+    margin-top: 30px;
+    margin-bottom: 12px;
+    color: var(--accent-light);
   }
 
   h4 {
-    font-size: 12.5px;
-    font-weight: 600;
-    margin-top: 18px;
+    font-size: 1rem;
+    margin-top: 20px;
     margin-bottom: 8px;
     color: var(--purple);
   }
 
-  h4::before {
-    content: '### ';
-    color: rgba(188,140,255,0.4);
-  }
+  p { margin-bottom: 14px; }
 
-  /* Paragraphs and text */
-  p { margin-bottom: 12px; }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
 
-  a { color: var(--blue); text-decoration: none; }
-  a:hover { text-decoration: underline; color: #79c0ff; }
-
-  strong { color: var(--text-bright); font-weight: 600; }
+  strong { color: var(--text); }
   em { color: var(--text-muted); font-style: italic; }
 
-  /* Inline code */
   code {
-    background: rgba(218,119,86,0.1);
-    border: 1px solid rgba(218,119,86,0.15);
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-family: inherit;
-    font-size: 0.92em;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    font-size: 0.88em;
     color: var(--accent-light);
   }
 
-  /* Code blocks - terminal session style */
   pre {
-    background: #000;
+    background: var(--code-bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 14px 18px;
+    border-radius: 8px;
+    padding: 16px 20px;
     overflow-x: auto;
-    margin: 12px 0 16px;
-    line-height: 1.55;
-    position: relative;
-  }
-
-  pre::before {
-    content: 'TERMINAL';
-    position: absolute;
-    top: 0;
-    right: 0;
-    padding: 2px 10px;
-    font-size: 9px;
-    color: var(--text-dim);
-    background: var(--bg-tertiary);
-    border-bottom-left-radius: 6px;
-    border-left: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    letter-spacing: 1px;
-    font-weight: 600;
+    margin: 14px 0 18px;
+    line-height: 1.5;
   }
 
   pre code {
     background: none;
-    border: none;
     padding: 0;
     color: var(--text);
-    font-size: 12px;
+    font-size: 0.85em;
   }
 
-  /* Tables - terminal grid style */
+  /* Tables */
   table {
     width: 100%;
     border-collapse: collapse;
-    margin: 12px 0 18px;
-    font-size: 12px;
+    margin: 14px 0 20px;
+    font-size: 0.9rem;
   }
 
   th {
     background: var(--bg-tertiary);
-    color: var(--accent);
+    color: var(--accent-light);
     text-align: left;
-    padding: 8px 12px;
+    padding: 10px 14px;
     font-weight: 600;
     border: 1px solid var(--border);
-    font-size: 11px;
+    font-size: 0.85rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
   }
 
   td {
-    padding: 7px 12px;
+    padding: 8px 14px;
     border: 1px solid var(--border);
     vertical-align: top;
   }
 
-  tr:nth-child(even) { background: rgba(255,255,255,0.015); }
-  tr:hover { background: rgba(218,119,86,0.04); }
+  tr:nth-child(even) { background: rgba(255,255,255,0.02); }
 
-  /* Callout boxes - terminal message style */
+  /* Callout boxes */
   .callout {
-    border: 1px solid var(--border);
-    background: var(--bg-tertiary);
-    padding: 12px 16px;
-    margin: 14px 0;
-    border-radius: 6px;
-    border-left: 3px solid var(--accent);
-    position: relative;
+    border-left: 4px solid var(--accent);
+    background: rgba(218, 119, 86, 0.08);
+    padding: 14px 18px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
   }
 
-  .callout::before {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    position: absolute;
-    top: -1px;
-    right: -1px;
-    padding: 2px 8px;
-    border-bottom-left-radius: 4px;
-    background: var(--accent-dim);
-    color: #000;
-  }
-
-  .callout.tip { border-left-color: var(--green); }
-  .callout.tip::before { content: 'TIP'; background: var(--green-dim); }
-
-  .callout.warning { border-left-color: var(--yellow); }
-  .callout.warning::before { content: 'WARN'; background: #7a5c00; }
-
-  .callout.danger { border-left-color: var(--red); }
-  .callout.danger::before { content: 'ERROR'; background: #8b1a11; }
+  .callout.tip { border-left-color: var(--green); background: rgba(63, 185, 80, 0.08); }
+  .callout.warning { border-left-color: var(--yellow); background: rgba(210, 153, 34, 0.08); }
+  .callout.danger { border-left-color: var(--red); background: rgba(248, 81, 73, 0.08); }
 
   .callout-title {
     font-weight: 700;
     margin-bottom: 4px;
-    font-size: 12px;
+    font-size: 0.9rem;
   }
 
-  .callout .callout-title { color: var(--accent-light); }
   .callout.tip .callout-title { color: var(--green); }
   .callout.warning .callout-title { color: var(--yellow); }
   .callout.danger .callout-title { color: var(--red); }
 
-  ul, ol { margin: 8px 0 12px 20px; }
+  ul, ol { margin: 10px 0 14px 24px; }
   li { margin-bottom: 4px; }
 
-  li::marker { color: var(--text-dim); }
-
-  /* Lifecycle diagram */
+  /* Event lifecycle diagram */
   .lifecycle {
-    background: #000;
+    background: var(--code-bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 18px;
-    font-size: 12px;
+    border-radius: 8px;
+    padding: 20px;
+    font-family: monospace;
+    font-size: 0.85rem;
     line-height: 1.6;
     white-space: pre;
     overflow-x: auto;
-    margin: 12px 0 16px;
+    margin: 14px 0 18px;
     color: var(--text-muted);
   }
 
-  .lifecycle .event { color: var(--accent); font-weight: 700; }
+  .lifecycle .event { color: var(--accent); font-weight: bold; }
   .lifecycle .action { color: var(--green); }
-  .lifecycle .note { color: var(--text-dim); }
+  .lifecycle .note { color: var(--text-muted); }
 
-  /* Badges */
+  /* Key-value badges */
   .badge {
     display: inline-block;
-    padding: 1px 7px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 700;
-    margin-right: 3px;
-    letter-spacing: 0.5px;
-  }
-
-  .badge-green { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.2); }
-  .badge-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); border: 1px solid rgba(210,153,34,0.2); }
-  .badge-red { background: rgba(248,81,73,0.15); color: var(--red); border: 1px solid rgba(248,81,73,0.2); }
-  .badge-purple { background: rgba(188,140,255,0.15); color: var(--purple); border: 1px solid rgba(188,140,255,0.2); }
-
-  /* Key badges */
-  .key {
-    display: inline-block;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-bright);
-    border-bottom: 2px solid var(--border-bright);
-    border-radius: 4px;
-    padding: 1px 7px;
-    font-size: 11px;
-    min-width: 22px;
-    text-align: center;
-    color: var(--text-bright);
-  }
-
-  .separator { margin: 0 2px; color: var(--text-dim); font-size: 11px; }
-
-  /* Status line at bottom */
-  .status-bar {
-    background: var(--accent-dim);
-    color: #000;
-    padding: 3px 16px;
-    font-size: 10.5px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
-    display: flex;
-    justify-content: space-between;
-    flex-shrink: 0;
-    letter-spacing: 0.2px;
+    margin-right: 4px;
   }
 
-  .status-bar .status-left { }
-  .status-bar .status-right { opacity: 0.8; }
-
-  /* Footer */
-  footer {
-    margin-top: 50px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
-    color: var(--text-dim);
-    font-size: 11px;
-  }
+  .badge-green { background: rgba(63,185,80,0.2); color: var(--green); }
+  .badge-yellow { background: rgba(210,153,34,0.2); color: var(--yellow); }
+  .badge-red { background: rgba(248,81,73,0.2); color: var(--red); }
+  .badge-purple { background: rgba(188,140,255,0.2); color: var(--purple); }
 
   /* Responsive */
   @media (max-width: 900px) {
-    .terminal-window {
-      margin: 0;
-      border-radius: 0;
-      border: none;
-      height: 100vh;
-    }
     nav { display: none; }
-    main { padding: 16px; }
+    main { margin-left: 0; padding: 20px; }
   }
 
+  /* Smooth scrolling */
   html { scroll-behavior: smooth; }
+
+  /* Section anchors */
   h2[id], h3[id] { scroll-margin-top: 20px; }
+
+  .key {
+    display: inline-block;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-family: monospace;
+    font-size: 0.8em;
+    min-width: 24px;
+    text-align: center;
+  }
+
+  .separator { margin: 0 3px; color: var(--text-muted); }
+
+  footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
 </style>
 </head>
 <body>
 
-<div class="terminal-window">
-
-  <div class="terminal-chrome">
-    <div class="window-dots">
-      <div class="dot dot-red"></div>
-      <div class="dot dot-yellow"></div>
-      <div class="dot dot-green"></div>
-    </div>
-    <div class="terminal-title">
-      claude &mdash; <span class="path">~/claude-code-guide</span>
-    </div>
-  </div>
-
-  <div class="terminal-body">
-
 <nav>
-  <div class="nav-header">
-    <div class="prompt">&gt; claude-code-guide<span class="cursor"></span></div>
-    <div class="info">Complete Reference &bull; March 2026</div>
+  <div class="nav-logo">
+    <h2>Claude Code Guide</h2>
+    <div class="version">Complete Reference &mdash; March 2026</div>
   </div>
 
   <a class="section-header">Getting Started</a>
@@ -545,7 +335,7 @@
   <a class="section-header">Hooks (Automation)</a>
   <a href="#hooks-why">Why Hooks Exist</a>
   <a href="#hooks-events">All Hook Events</a>
-  <a href="#hooks-protocol">Exit Code Protocol</a>
+  <a href="#hooks-protocol">The Exit Code Protocol</a>
   <a href="#hooks-config">Configuration Format</a>
   <a href="#hooks-recipes">Practical Recipes</a>
 
@@ -560,7 +350,6 @@
   <a href="#mcp">MCP Servers</a>
   <a href="#skills">Skills</a>
   <a href="#plan-mode">Plan Mode</a>
-  <a href="#extended-thinking">Extended Thinking</a>
   <a href="#worktrees">Git Worktrees</a>
   <a href="#ide">IDE Integrations</a>
 
@@ -571,46 +360,45 @@
 
   <a class="section-header">Tutorials</a>
   <a href="#first-10-minutes">Your First 10 Minutes</a>
-  <a href="#workflow-debug">Debug a Bug</a>
-  <a href="#workflow-refactor">Refactor &amp; PR</a>
+  <a href="#workflow-debug">Workflow: Debug a Bug</a>
+  <a href="#workflow-refactor">Workflow: Refactor &amp; PR</a>
 
   <a class="section-header">Power User</a>
   <a href="#hidden-gems">Hidden Gems</a>
   <a href="#rewind">Rewind &amp; Checkpoints</a>
-  <a href="#browser-automation">Browser Automation</a>
+  <a href="#extended-thinking">Extended Thinking</a>
   <a href="#cost-optimization">Cost Optimization</a>
-  <a href="#headless">Headless / SDK Mode</a>
+  <a href="#browser-automation">Browser Automation</a>
+  <a href="#headless">Headless/SDK Mode</a>
   <a href="#cicd">CI/CD Integration</a>
-  <a href="#yolo-mode">YOLO Mode</a>
+  <a href="#yolo-mode">"YOLO Mode"</a>
   <a href="#cli-reference">CLI Reference</a>
   <a href="#git-workflows">Git Workflows</a>
   <a href="#tips">Tips &amp; Best Practices</a>
 
   <a class="section-header">Platform Notes</a>
   <a href="#windows-gotchas">Windows Gotchas</a>
-  <a href="#comparison">vs Cursor / Copilot</a>
+  <a href="#comparison">vs Cursor / Copilot / Windsurf</a>
   <a href="#troubleshooting">Troubleshooting &amp; FAQ</a>
 
   <a class="section-header">Android / Termux</a>
   <a href="#android-overview">Running on Android</a>
   <a href="#android-install">Installation Steps</a>
-  <a href="#android-tmp">The /tmp Fix</a>
-  <a href="#android-extras">Extras &amp; Issues</a>
+  <a href="#android-tmp">The /tmp Fix (Critical)</a>
+  <a href="#android-extras">Extras &amp; Known Issues</a>
 
   <a class="section-header">Resources</a>
   <a href="#resources">Learning Resources</a>
 
-  <a class="section-header">Prometheus</a>
-  <a href="#prometheus-analysis">Analysis &amp; Recs</a>
+  <a class="section-header">Prometheus + Claude Code</a>
+  <a href="#prometheus-analysis">Analysis &amp; Recommendations</a>
 </nav>
 
 <main>
 
-<div class="title-block">
-  <h1>The Complete Claude Code Guide</h1>
-  <p class="subtitle">Everything you need to know &mdash; from first install to power-user mastery.<br>
-  Built from a deep-dive conversation, March 2026.</p>
-</div>
+<h1>The Complete Claude Code Guide</h1>
+<p class="subtitle">Everything you need to know &mdash; from first install to power-user mastery.<br>
+Built from a deep-dive conversation, March 2026.</p>
 
 <!-- ==================== GETTING STARTED ==================== -->
 
@@ -757,60 +545,6 @@ claude -c                      # Continue last session</code></pre>
 <div class="callout tip">
   <div class="callout-title">Import external files</div>
   Use <code>@README.md</code> or <code>@docs/testing-guide.md</code> in CLAUDE.md to reference other files.
-</div>
-
-
-<h2 id="rules-files">Rules Files</h2>
-<p>Rules files provide <strong>context-sensitive instructions</strong> that load conditionally based on which files Claude is working with. They live in <code>.claude/rules/</code>.</p>
-
-<h3>How they work</h3>
-<p>Each rules file has a glob pattern in its frontmatter. When Claude reads or edits a file matching that pattern, the rules file is automatically loaded into context.</p>
-
-<pre><code># .claude/rules/testing.md
----
-globs: ["*.test.ts", "*.spec.ts", "**/__tests__/**"]
----
-
-# Testing Rules
-- Use vitest, not jest
-- Always test edge cases: null, empty, boundary values
-- Mock external services, never hit real APIs
-- Follow Arrange-Act-Assert pattern</code></pre>
-
-<h3>More examples</h3>
-<pre><code># .claude/rules/api-routes.md
----
-globs: ["src/routes/**/*.ts", "src/api/**/*.ts"]
----
-
-# API Route Rules
-- Always validate request body with zod
-- Return proper HTTP status codes (not just 200/500)
-- Include error messages in response body
-- Log all errors to the structured logger</code></pre>
-
-<pre><code># .claude/rules/database.md
----
-globs: ["src/db/**", "*.sql", "migrations/**"]
----
-
-# Database Rules
-- Always use parameterized queries (never string interpolation)
-- Migrations must be reversible (include down migration)
-- Use transactions for multi-table operations</code></pre>
-
-<h3>Rules vs CLAUDE.md</h3>
-<table>
-  <tr><th></th><th>CLAUDE.md</th><th>Rules Files</th></tr>
-  <tr><td><strong>Loaded</strong></td><td>Always, every session</td><td>Only when working with matching files</td></tr>
-  <tr><td><strong>Best for</strong></td><td>Project-wide conventions</td><td>Context-specific standards</td></tr>
-  <tr><td><strong>Context cost</strong></td><td>Always in context</td><td>On-demand, saves tokens</td></tr>
-  <tr><td><strong>Location</strong></td><td><code>.claude/CLAUDE.md</code></td><td><code>.claude/rules/*.md</code></td></tr>
-</table>
-
-<div class="callout tip">
-  <div class="callout-title">Save context with rules files</div>
-  Move domain-specific instructions from CLAUDE.md into rules files. Your test conventions don't need to be in context when Claude is editing CSS. This saves tokens and keeps instructions relevant.
 </div>
 
 
@@ -1215,49 +949,6 @@ Migrate $0 from $1 to $2.</code></pre>
 </ul>
 
 
-<h2 id="extended-thinking">Extended Thinking</h2>
-<p>Extended thinking lets Claude "think harder" before responding &mdash; allocating more reasoning time for complex problems.</p>
-
-<h3>How to enable it</h3>
-<ul>
-  <li>Press <span class="key">Ctrl</span><span class="separator">+</span><span class="key">T</span> to toggle thinking on/off</li>
-  <li>Or use the flag: <code>claude --thinking</code></li>
-</ul>
-
-<h3>What it does</h3>
-<p>When enabled, Claude performs an internal reasoning pass before generating its response. This shows as a "thinking" indicator in the UI. The thinking process:</p>
-<ul>
-  <li>Analyzes the problem from multiple angles</li>
-  <li>Plans its approach before acting</li>
-  <li>Cross-checks its reasoning for errors</li>
-  <li>Considers edge cases and implications</li>
-</ul>
-
-<h3>Adaptive reasoning</h3>
-<p>On Opus 4.6, thinking is <strong>adaptive</strong> &mdash; Claude automatically allocates more thinking time for harder problems. A simple "rename this variable" gets minimal thinking. A complex architectural question gets deep reasoning.</p>
-
-<h3>When to use it</h3>
-<table>
-  <tr><th>Use Thinking</th><th>Skip Thinking</th></tr>
-  <tr><td>Complex debugging with multiple possible causes</td><td>Simple file edits and renames</td></tr>
-  <tr><td>Architectural decisions with trade-offs</td><td>Running a build or test command</td></tr>
-  <tr><td>Code review that needs to find subtle bugs</td><td>Quick questions about code</td></tr>
-  <tr><td>Multi-step refactoring plans</td><td>Generating boilerplate</td></tr>
-  <tr><td>Security analysis</td><td>Git operations</td></tr>
-</table>
-
-<h3>"Think harder" prompts</h3>
-<p>You can influence depth with your prompt:</p>
-<pre><code>> Think carefully about the security implications of this auth flow
-> Reason step by step about why this test is flaky
-> Consider all edge cases before implementing this</code></pre>
-
-<div class="callout tip">
-  <div class="callout-title">Cost vs quality trade-off</div>
-  Extended thinking uses more tokens (and costs more). Default is usually fine for 90% of tasks. Toggle it on for the hard stuff &mdash; architectural decisions, subtle bugs, complex refactors &mdash; and turn it off for routine work.
-</div>
-
-
 <h2 id="worktrees">Git Worktrees</h2>
 <p>Run parallel Claude sessions on separate branches:</p>
 <pre><code>claude --worktree feature-auth    # Isolated git worktree
@@ -1297,8 +988,8 @@ claude --resume "auth-refactor"     # Same, with a name
 claude --session-id "abc-123-..."   # Resume by exact session ID</code></pre>
 
 <h3>During a session</h3>
-<pre><code>/fork-session                       # Branch off independently
-/clear                              # Wipe conversation, start fresh
+<pre><code>/fork-session                       # Branch off — both sessions continue independently
+/clear                              # Wipe conversation, start fresh (same project)
 /compact                            # Compress context without clearing</code></pre>
 
 <h3>Session persistence</h3>
@@ -1563,59 +1254,6 @@ cat error.log | claude -p "What went wrong?"</code></pre>
 <p>When you rewind, your original prompt stays in the input field. You can edit it and re-submit &mdash; perfect for trying a different instruction on the same starting point.</p>
 
 
-<h2 id="browser-automation">Browser Automation</h2>
-<p>Claude Code can control Chrome directly for testing, debugging, and scraping documentation.</p>
-
-<h3>Setup</h3>
-<pre><code># Launch with browser automation enabled
-claude --chrome
-
-# Or enable it in settings.json
-{
-  "env": {
-    "CLAUDE_CODE_CHROME": "true"
-  }
-}</code></pre>
-
-<p>You'll also need the <strong>Claude Code Chrome extension</strong> installed from the Chrome Web Store. This bridges Claude Code's terminal commands to your browser.</p>
-
-<h3>What Claude can do</h3>
-<table>
-  <tr><th>Action</th><th>Example Prompt</th></tr>
-  <tr><td><strong>Navigate</strong></td><td>"Open localhost:3000/login"</td></tr>
-  <tr><td><strong>Click elements</strong></td><td>"Click the 'Submit' button"</td></tr>
-  <tr><td><strong>Fill forms</strong></td><td>"Fill the email field with test@example.com"</td></tr>
-  <tr><td><strong>Screenshot</strong></td><td>"Take a screenshot of the current page"</td></tr>
-  <tr><td><strong>Read page content</strong></td><td>"What text is shown in the error banner?"</td></tr>
-  <tr><td><strong>Check console</strong></td><td>"Are there any JavaScript errors in the console?"</td></tr>
-  <tr><td><strong>Wait for elements</strong></td><td>"Wait for the loading spinner to disappear"</td></tr>
-</table>
-
-<h3>Practical use cases</h3>
-
-<h4>Visual debugging</h4>
-<pre><code>> Open the app in Chrome, navigate to /dashboard, and screenshot the
-> layout. The sidebar is overlapping the content on mobile width.</code></pre>
-<p>Claude opens Chrome, navigates, screenshots, identifies the CSS issue, then fixes it in your code.</p>
-
-<h4>End-to-end testing</h4>
-<pre><code>> Test the full checkout flow: add an item to cart, go to checkout,
-> fill in payment details, and verify the success page shows.</code></pre>
-
-<h4>Scraping documentation</h4>
-<pre><code>> Open the Stripe API docs and find the endpoint for creating
-> payment intents. Summarize the required parameters.</code></pre>
-
-<h3>Headless mode</h3>
-<p>For CI/CD or screenshotting without a visible browser:</p>
-<pre><code>claude --chrome --headless -p "Screenshot localhost:3000 and check for layout issues"</code></pre>
-
-<div class="callout warning">
-  <div class="callout-title">Browser automation requires Chrome</div>
-  This feature specifically requires Google Chrome (not Firefox, Edge, or Safari). The Claude Code Chrome extension is the bridge &mdash; without it, Claude can't see or interact with the browser.
-</div>
-
-
 <h2 id="cost-optimization">Cost Optimization</h2>
 
 <h3>Model selection matters most</h3>
@@ -1664,6 +1302,32 @@ claude -p --output-format stream-json --verbose "task"
 
 # With schema validation
 claude -p --json-schema '{"type":"object",...}' "extract data"</code></pre>
+
+
+<h2 id="cli-reference">CLI Reference</h2>
+<pre><code># Session management
+claude                              # Interactive
+claude "task"                       # With prompt
+claude -c                           # Continue last
+claude -r "name" "prompt"           # Resume specific
+
+# Key flags
+--model sonnet|opus|haiku           # Choose model
+--permission-mode plan              # Read-only
+--add-dir ../other                  # Extra directories
+--chrome                            # Browser automation
+--max-turns 5                       # Limit loops
+--append-system-prompt "text"       # Add instructions
+--output-format json|text|stream-json
+
+# Auth
+claude auth login|logout|status
+
+# MCP
+claude mcp add|list|get|remove
+
+# Updates
+claude update</code></pre>
 
 
 <h2 id="cicd">CI/CD Integration</h2>
@@ -1858,88 +1522,6 @@ git commit -m "$MSG"</code></pre>
 </ol>
 
 
-<h2 id="cli-reference">CLI Reference</h2>
-<pre><code># Session management
-claude                              # Interactive
-claude "task"                       # With prompt
-claude -c                           # Continue last
-claude -r "name" "prompt"           # Resume specific
-
-# Key flags
---model sonnet|opus|haiku           # Choose model
---permission-mode plan              # Read-only
---add-dir ../other                  # Extra directories
---chrome                            # Browser automation
---max-turns 5                       # Limit loops
---append-system-prompt "text"       # Add instructions
---output-format json|text|stream-json
-
-# Auth
-claude auth login|logout|status
-
-# MCP
-claude mcp add|list|get|remove
-
-# Updates
-claude update</code></pre>
-
-
-<h2 id="git-workflows">Git Workflows</h2>
-<p>Claude Code has deep git integration that goes far beyond simple commits.</p>
-
-<h3>Commit workflow</h3>
-<pre><code>> Commit this with a good message</code></pre>
-<p>Claude runs <code>git status</code>, <code>git diff</code>, reviews recent commit style, stages relevant files, writes a descriptive commit message, and commits. It follows conventional commit style if your project uses it.</p>
-
-<h3>PR workflow</h3>
-<pre><code>> Create a PR for this feature</code></pre>
-<p>Claude creates a branch (if needed), pushes, and uses <code>gh pr create</code> with a structured description including summary and test plan. It reads the full diff from the base branch to write an accurate PR body.</p>
-
-<h3>Branch management</h3>
-<pre><code>> Create a feature branch for the auth refactor
-> Cherry-pick commit abc123 onto the release branch
-> What commits are on this branch that aren't on main?</code></pre>
-
-<h3>Conflict resolution</h3>
-<pre><code>> Merge main into this branch and resolve any conflicts</code></pre>
-<p>Claude pulls, identifies conflicts, reads both sides, applies intelligent resolution (not just "pick ours"), and verifies the result compiles.</p>
-
-<h3>PR review</h3>
-<pre><code>> Review PR #42 for security issues</code></pre>
-<p>Claude uses <code>gh pr diff 42</code> and <code>gh pr view 42</code> to read the full diff and description, then provides structured feedback.</p>
-
-<h3>Worktrees for parallel features</h3>
-<pre><code>claude --worktree feature-a         # First terminal: feature A
-claude --worktree feature-b         # Second terminal: feature B</code></pre>
-<p>Each worktree has its own branch, directory, and file state. Two Claude instances working on different features without conflicts.</p>
-
-<h3>Git safety behavior</h3>
-<p>Claude Code has built-in safety for git operations:</p>
-<ul>
-  <li>Prefers <strong>new commits</strong> over amending (to avoid destroying work)</li>
-  <li>Stages <strong>specific files</strong> rather than <code>git add -A</code> (to avoid committing secrets)</li>
-  <li><strong>Never force-pushes to main/master</strong> without explicit instruction</li>
-  <li><strong>Never skips hooks</strong> (<code>--no-verify</code>) unless explicitly asked</li>
-  <li>Asks before <strong>destructive operations</strong> like <code>git reset --hard</code></li>
-</ul>
-
-<div class="callout tip">
-  <div class="callout-title">Git + Hooks = CI-in-a-box</div>
-  Combine Claude Code's git workflow with a <code>Stop</code> hook that runs tests:
-<pre><code>{
-  "hooks": {
-    "Stop": [{
-      "hooks": [{
-        "type": "command",
-        "command": "npm test &amp;&gt;/dev/null || (echo 'Tests failing - keep going' &gt;&amp;2 &amp;&amp; exit 2); exit 0"
-      }]
-    }]
-  }
-}</code></pre>
-  Claude commits only when tests pass. Built-in CI.
-</div>
-
-
 <h2 id="tips">Tips &amp; Best Practices</h2>
 <ol>
   <li><strong>Start with <code>/init</code></strong> to create a CLAUDE.md for your project</li>
@@ -2018,104 +1600,104 @@ Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name
     <th></th>
     <th>Claude Code</th>
     <th>Cursor</th>
-    <th>Copilot</th>
+    <th>GitHub Copilot</th>
     <th>Windsurf</th>
   </tr>
   <tr>
     <td><strong>Interface</strong></td>
-    <td>Terminal CLI + IDE</td>
-    <td>Full IDE</td>
+    <td>Terminal CLI + IDE extensions</td>
+    <td>Full IDE (VS Code fork)</td>
     <td>IDE plugin</td>
-    <td>Full IDE</td>
+    <td>Full IDE (VS Code fork)</td>
   </tr>
   <tr>
     <td><strong>Model</strong></td>
     <td>Claude (Opus/Sonnet/Haiku)</td>
-    <td>Multiple</td>
+    <td>Multiple (Claude, GPT, etc.)</td>
     <td>GPT-4o / Claude</td>
     <td>Multiple</td>
   </tr>
   <tr>
     <td><strong>Agentic loop</strong></td>
-    <td><span class="badge badge-green">Full</span></td>
-    <td><span class="badge badge-green">Yes</span></td>
-    <td><span class="badge badge-yellow">Limited</span></td>
-    <td><span class="badge badge-green">Yes</span></td>
+    <td><span class="badge badge-green">Full</span> Multi-step, self-correcting</td>
+    <td><span class="badge badge-green">Yes</span> Composer agent</td>
+    <td><span class="badge badge-yellow">Limited</span> Workspace agent</td>
+    <td><span class="badge badge-green">Yes</span> Cascade</td>
   </tr>
   <tr>
     <td><strong>Shell access</strong></td>
-    <td><span class="badge badge-green">Full</span></td>
+    <td><span class="badge badge-green">Full</span> Runs any command</td>
     <td><span class="badge badge-green">Yes</span></td>
     <td><span class="badge badge-yellow">Limited</span></td>
     <td><span class="badge badge-green">Yes</span></td>
   </tr>
   <tr>
-    <td><strong>Git</strong></td>
-    <td><span class="badge badge-green">Full</span></td>
+    <td><strong>Git integration</strong></td>
+    <td><span class="badge badge-green">Full</span> Commits, branches, PRs</td>
     <td><span class="badge badge-yellow">Basic</span></td>
-    <td><span class="badge badge-green">Full</span></td>
+    <td><span class="badge badge-green">Full</span> (GitHub native)</td>
     <td><span class="badge badge-yellow">Basic</span></td>
   </tr>
   <tr>
     <td><strong>Subagents</strong></td>
-    <td><span class="badge badge-green">Yes</span></td>
+    <td><span class="badge badge-green">Yes</span> Custom, parallel</td>
     <td><span class="badge badge-red">No</span></td>
     <td><span class="badge badge-red">No</span></td>
     <td><span class="badge badge-red">No</span></td>
   </tr>
   <tr>
-    <td><strong>MCP</strong></td>
+    <td><strong>MCP support</strong></td>
     <td><span class="badge badge-green">Full</span></td>
     <td><span class="badge badge-green">Yes</span></td>
     <td><span class="badge badge-yellow">Limited</span></td>
     <td><span class="badge badge-yellow">Limited</span></td>
   </tr>
   <tr>
-    <td><strong>Hooks</strong></td>
-    <td><span class="badge badge-green">12+ events</span></td>
+    <td><strong>Hooks / automation</strong></td>
+    <td><span class="badge badge-green">Full</span> 12+ event types</td>
     <td><span class="badge badge-red">No</span></td>
     <td><span class="badge badge-red">No</span></td>
     <td><span class="badge badge-red">No</span></td>
   </tr>
   <tr>
-    <td><strong>Skills</strong></td>
-    <td><span class="badge badge-green">Yes</span></td>
-    <td><span class="badge badge-yellow">Rules</span></td>
-    <td><span class="badge badge-yellow">Instr.</span></td>
+    <td><strong>Custom skills</strong></td>
+    <td><span class="badge badge-green">Yes</span> Markdown-based</td>
+    <td><span class="badge badge-yellow">Rules files</span></td>
+    <td><span class="badge badge-yellow">Instructions</span></td>
     <td><span class="badge badge-yellow">Rules</span></td>
   </tr>
   <tr>
-    <td><strong>Memory</strong></td>
-    <td><span class="badge badge-green">Auto+manual</span></td>
+    <td><strong>Persistent memory</strong></td>
+    <td><span class="badge badge-green">Auto + manual</span></td>
     <td><span class="badge badge-yellow">Notepad</span></td>
-    <td><span class="badge badge-yellow">Instr.</span></td>
+    <td><span class="badge badge-yellow">Instructions</span></td>
     <td><span class="badge badge-yellow">Rules</span></td>
   </tr>
   <tr>
-    <td><strong>Headless</strong></td>
-    <td><span class="badge badge-green">Full</span></td>
+    <td><strong>Headless / CI</strong></td>
+    <td><span class="badge badge-green">Full</span> <code>-p</code> flag</td>
     <td><span class="badge badge-red">No</span></td>
-    <td><span class="badge badge-yellow">CLI</span></td>
+    <td><span class="badge badge-yellow">CLI preview</span></td>
     <td><span class="badge badge-red">No</span></td>
   </tr>
   <tr>
-    <td><strong>Mobile</strong></td>
-    <td><span class="badge badge-green">Termux</span></td>
+    <td><strong>Mobile (Android)</strong></td>
+    <td><span class="badge badge-green">Yes</span> (Termux)</td>
     <td><span class="badge badge-red">No</span></td>
     <td><span class="badge badge-red">No</span></td>
     <td><span class="badge badge-red">No</span></td>
   </tr>
   <tr>
     <td><strong>Plan mode</strong></td>
-    <td><span class="badge badge-green">Yes</span></td>
+    <td><span class="badge badge-green">Yes</span> Read-only exploration</td>
     <td><span class="badge badge-red">No</span></td>
     <td><span class="badge badge-red">No</span></td>
     <td><span class="badge badge-red">No</span></td>
   </tr>
   <tr>
     <td><strong>Pricing</strong></td>
-    <td>Claude sub or API</td>
-    <td>$20/mo + API</td>
+    <td>Claude subscription or API</td>
+    <td>$20/mo + API costs</td>
     <td>$10-39/mo</td>
     <td>$15/mo + credits</td>
   </tr>
@@ -2253,22 +1835,22 @@ Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name
   <tr>
     <td><strong>Claude Code Docs</strong></td>
     <td><a href="https://docs.anthropic.com/en/docs/claude-code">docs.anthropic.com</a></td>
-    <td>Authoritative reference</td>
+    <td>Authoritative reference for all features</td>
   </tr>
   <tr>
     <td><strong>Claude Code GitHub</strong></td>
     <td><a href="https://github.com/anthropics/claude-code">github.com/anthropics/claude-code</a></td>
-    <td>Bug reports, features</td>
+    <td>Bug reports, feature requests, community discussion</td>
   </tr>
   <tr>
     <td><strong>MCP Specification</strong></td>
     <td><a href="https://modelcontextprotocol.io">modelcontextprotocol.io</a></td>
-    <td>Building MCP servers</td>
+    <td>Building or understanding MCP servers</td>
   </tr>
   <tr>
     <td><strong>Anthropic Cookbook</strong></td>
-    <td><a href="https://github.com/anthropics/anthropic-cookbook">anthropics/anthropic-cookbook</a></td>
-    <td>Practical examples</td>
+    <td><a href="https://github.com/anthropics/anthropic-cookbook">github.com/anthropics/anthropic-cookbook</a></td>
+    <td>Practical examples, patterns, recipes</td>
   </tr>
 </table>
 
@@ -2476,11 +2058,11 @@ gh auth login</code></pre>
 <h3>Where Prometheus and Claude Code Overlap (Streamline)</h3>
 <table>
   <tr><th>Feature</th><th>Prometheus</th><th>Claude Code Native</th><th>Recommendation</th></tr>
-  <tr><td>Session memory</td><td><code>state.md</code> + <code>ledger.md</code></td><td>Auto memory + CLAUDE.md</td><td>Keep both &mdash; different purposes</td></tr>
-  <tr><td>Boot sequence</td><td>8-step file loading</td><td>CLAUDE.md auto-load + skills</td><td>Consider making Prometheus a skill with <code>context: fork</code></td></tr>
-  <tr><td>Mode detection</td><td>DETECTION_HEURISTICS.md</td><td>Claude's native classification</td><td>Prometheus adds value &mdash; keep</td></tr>
-  <tr><td>User prefs</td><td><code>user.md</code></td><td>Auto memory + <code>~/.claude/CLAUDE.md</code></td><td>Merge into auto-memory</td></tr>
-  <tr><td>Tool recs</td><td>TOOLS hook in plugins</td><td>Claude knows tools natively</td><td>Keep for domain-specific (PARI/GP)</td></tr>
+  <tr><td>Session memory</td><td><code>state.md</code> + <code>ledger.md</code></td><td>Auto memory + CLAUDE.md</td><td>Keep both &mdash; different purposes (research state vs project knowledge)</td></tr>
+  <tr><td>Boot sequence</td><td>8-step file loading</td><td>CLAUDE.md auto-load + skills</td><td>Consider making Prometheus a Claude Code <strong>skill</strong> with <code>context: fork</code></td></tr>
+  <tr><td>Mode detection</td><td>DETECTION_HEURISTICS.md</td><td>Claude's native classification</td><td>Prometheus adds value here &mdash; keep</td></tr>
+  <tr><td>User preferences</td><td><code>Prometheus.env/user.md</code></td><td>Auto memory + <code>~/.claude/CLAUDE.md</code></td><td>Merge into auto-memory; less duplication</td></tr>
+  <tr><td>Tool recommendations</td><td>TOOLS hook in plugins</td><td>Claude knows tools natively</td><td>Keep for domain-specific tools (PARI/GP)</td></tr>
 </table>
 
 <h3>What You're Missing in Claude Code (Do More Of)</h3>
@@ -2494,7 +2076,7 @@ gh auth login</code></pre>
   </li>
   <li><strong>No custom subagents</strong> &mdash; You could create a <code>math-verifier</code> agent that runs PARI/GP checks</li>
   <li><strong>No Claude Code skills</strong> (outside Prometheus) &mdash; Your DISTILL, GRIND, etc. live inside Prometheus but could also be native skills</li>
-  <li><strong>Permissions are overly specific</strong> &mdash; Your <code>settings.local.json</code> has 100+ individual Bash command allowances. Use wildcards instead</li>
+  <li><strong>Permissions are overly specific</strong> &mdash; Your <code>settings.local.json</code> has 100+ individual Bash command allowances (including full PARI/GP scripts). Use wildcards: <code>"Bash(\"C:\\Program Files (x86)\\Pari64*\")"</code></li>
   <li><strong>MEMORY.md is over 200 lines</strong> (215) &mdash; Last 15 lines are truncated. Move detailed sections into topic files</li>
   <li><strong>No MCP servers</strong> &mdash; Consider GitHub MCP for your repos</li>
 </ul>
@@ -2539,7 +2121,7 @@ gh auth login</code></pre>
   </li>
   <li><strong>Wildcard your PARI/GP permissions</strong> instead of individual commands</li>
   <li><strong>Trim MEMORY.md below 200 lines</strong> &mdash; move YM paper details, NS proof details, etc. into topic files</li>
-  <li><strong>Consider Prometheus commands as Claude Code skills</strong> &mdash; <code>/grind</code>, <code>/frontier</code>, <code>/parallax</code> could be standalone skills</li>
+  <li><strong>Consider Prometheus commands as Claude Code skills</strong> &mdash; <code>/grind</code>, <code>/frontier</code>, <code>/parallax</code> could be standalone skills that load the relevant Prometheus plugin on demand</li>
 </ol>
 
 <h3>What to Do Less Of</h3>
@@ -2555,15 +2137,6 @@ gh auth login</code></pre>
 </footer>
 
 </main>
-
-  </div><!-- terminal-body -->
-
-  <div class="status-bar">
-    <span class="status-left">claude-code-guide &mdash; 50+ sections &mdash; Complete Reference</span>
-    <span class="status-right">Opus 4.6 &bull; March 2026</span>
-  </div>
-
-</div><!-- terminal-window -->
 
 </body>
 </html>
