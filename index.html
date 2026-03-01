@@ -352,11 +352,24 @@
   <a href="#worktrees">Git Worktrees</a>
   <a href="#ide">IDE Integrations</a>
 
+  <a class="section-header">Tutorials</a>
+  <a href="#first-10-minutes">Your First 10 Minutes</a>
+  <a href="#workflow-debug">Workflow: Debug a Bug</a>
+  <a href="#workflow-refactor">Workflow: Refactor &amp; PR</a>
+
   <a class="section-header">Power User</a>
   <a href="#hidden-gems">Hidden Gems</a>
+  <a href="#rewind">Rewind &amp; Checkpoints</a>
+  <a href="#cost-optimization">Cost Optimization</a>
   <a href="#headless">Headless/SDK Mode</a>
+  <a href="#cicd">CI/CD Integration</a>
   <a href="#cli-reference">CLI Reference</a>
   <a href="#tips">Tips &amp; Best Practices</a>
+
+  <a class="section-header">Platform Notes</a>
+  <a href="#windows-gotchas">Windows Gotchas</a>
+  <a href="#comparison">vs Cursor / Copilot / Windsurf</a>
+  <a href="#troubleshooting">Troubleshooting &amp; FAQ</a>
 
   <a class="section-header">Android / Termux</a>
   <a href="#android-overview">Running on Android</a>
@@ -946,6 +959,93 @@ isolation: worktree
 </table>
 
 
+<!-- ==================== TUTORIALS ==================== -->
+
+<h2 id="first-10-minutes">Your First 10 Minutes with Claude Code</h2>
+
+<p>A step-by-step walkthrough from zero to productive. Assumes you've already installed Claude Code.</p>
+
+<h3>Minute 0-1: Start and authenticate</h3>
+<pre><code>cd your-project
+claude</code></pre>
+<p>If this is your first time, you'll be prompted to log in. Follow the browser flow.</p>
+
+<h3>Minute 1-2: Generate project instructions</h3>
+<pre><code>/init</code></pre>
+<p>Claude scans your project and generates a <code>CLAUDE.md</code> with build commands, architecture notes, and conventions. Review it, edit if needed.</p>
+
+<h3>Minute 2-4: Ask Claude to understand your project</h3>
+<pre><code>> What does this project do? Walk me through the architecture.</code></pre>
+<p>Claude reads your files, finds the entry points, and explains the structure. This also gives Claude context for future work.</p>
+
+<h3>Minute 4-6: Make your first edit</h3>
+<pre><code>> Add input validation to the login endpoint</code></pre>
+<p>Claude will find the relevant file, show you a diff, and ask for permission to apply it. Review, approve, done.</p>
+
+<h3>Minute 6-8: Run tests</h3>
+<pre><code>> Run the tests and fix anything that's broken</code></pre>
+<p>Claude runs your test suite, reads failures, edits code, re-runs until green.</p>
+
+<h3>Minute 8-10: Create a commit</h3>
+<pre><code>> Commit this with a good message</code></pre>
+<p>Claude stages the changed files, writes a descriptive commit message, and creates the commit.</p>
+
+<div class="callout tip">
+  <div class="callout-title">What to explore next</div>
+  <ul>
+    <li><code>/model</code> &mdash; Try switching between Opus (deep reasoning) and Sonnet (fast, cheaper)</li>
+    <li><code>/cost</code> &mdash; See how many tokens you've used</li>
+    <li><code>/memory</code> &mdash; Check what Claude learned about your project</li>
+    <li><span class="key">Shift</span>+<span class="key">Tab</span> &mdash; Try Plan mode for safe exploration</li>
+  </ul>
+</div>
+
+
+<h2 id="workflow-debug">Workflow: Debugging a Production Bug</h2>
+
+<p>A realistic end-to-end example showing how features combine.</p>
+
+<h3>1. Start in Plan mode (safe exploration)</h3>
+<pre><code># Press Shift+Tab twice for Plan mode
+> Users report 500 errors on /api/checkout. The error log shows:
+> "TypeError: Cannot read property 'price' of undefined"
+> Investigate the root cause.</code></pre>
+<p>Claude searches the codebase, traces the data flow, finds the bug &mdash; without changing anything.</p>
+
+<h3>2. Switch to default mode and fix</h3>
+<pre><code># Press Shift+Tab to go back to default mode
+> Fix it. The cart items array can contain null entries after deletion.
+> Add a filter before the price calculation.</code></pre>
+<p>Claude edits the file and shows you the diff.</p>
+
+<h3>3. Verify with tests</h3>
+<pre><code>> Write a test for this edge case and run the full test suite</code></pre>
+
+<h3>4. Commit and create PR</h3>
+<pre><code>> Commit and create a PR for this fix</code></pre>
+<p>Claude creates a branch, commits, pushes, and opens a PR with a description of the bug and fix.</p>
+
+
+<h2 id="workflow-refactor">Workflow: Refactor a Module and Create a PR</h2>
+
+<h3>1. Plan the refactor</h3>
+<pre><code># Start in Plan mode
+> The auth module in src/auth/ mixes JWT validation, session management,
+> and password hashing. Plan a refactoring to separate these concerns.</code></pre>
+<p>Claude explores the code, identifies dependencies, and presents a plan.</p>
+
+<h3>2. Execute with worktree isolation</h3>
+<pre><code>> Create a worktree and implement the plan</code></pre>
+<p>Claude creates an isolated git worktree, so your main branch stays clean while it works.</p>
+
+<h3>3. Spawn subagents for parallel work</h3>
+<pre><code>> Split the JWT, session, and password modules in parallel</code></pre>
+<p>Claude spawns subagents that each handle one module simultaneously.</p>
+
+<h3>4. Run tests, commit, PR</h3>
+<pre><code>> Run all tests, commit, and create a PR with a detailed description</code></pre>
+
+
 <!-- ==================== POWER USER ==================== -->
 
 <h2 id="hidden-gems">Hidden Gems &amp; Overlooked Features</h2>
@@ -994,6 +1094,74 @@ cat error.log | claude -p "What went wrong?"</code></pre>
 </table>
 
 
+<h2 id="rewind">Rewind &amp; Checkpoints</h2>
+
+<p>Claude Code tracks every change and conversation state. You can rewind to any point.</p>
+
+<h3>Undo the last change</h3>
+<pre><code>/undo                              # Revert last code change
+# or press Ctrl+_</code></pre>
+
+<h3>Rewind to any point</h3>
+<p>Press <span class="key">Esc</span> twice to open the rewind menu. You'll see every conversation turn with options:</p>
+<table>
+  <tr><th>Option</th><th>What It Does</th></tr>
+  <tr><td><strong>Rewind here</strong></td><td>Restore code and conversation to this exact point. All later changes undone.</td></tr>
+  <tr><td><strong>Summarize from here</strong></td><td>Keep everything before this point intact, compress everything after into a summary. Frees context without losing early instructions.</td></tr>
+</table>
+
+<div class="callout tip">
+  <div class="callout-title">Strategic summarization</div>
+  Use "Summarize from here" instead of <code>/compact</code> when you want to keep your initial setup and CLAUDE.md instructions intact but compress a verbose debugging phase. Much more surgical than global compaction.
+</div>
+
+<h3>Fork a conversation</h3>
+<pre><code>/fork-session</code></pre>
+<p>Creates a branch of the current session. Explore a different approach without losing your current work. Both sessions continue independently.</p>
+
+<h3>Key insight: Rewind keeps the prompt</h3>
+<p>When you rewind, your original prompt stays in the input field. You can edit it and re-submit &mdash; perfect for trying a different instruction on the same starting point.</p>
+
+
+<h2 id="cost-optimization">Cost Optimization</h2>
+
+<h3>Model selection matters most</h3>
+<table>
+  <tr><th>Model</th><th>Best For</th><th>Relative Cost</th></tr>
+  <tr><td><strong>Haiku</strong></td><td>Simple edits, file search, quick questions</td><td><span class="badge badge-green">$</span></td></tr>
+  <tr><td><strong>Sonnet</strong></td><td>Most coding tasks, balanced speed/quality</td><td><span class="badge badge-yellow">$$</span></td></tr>
+  <tr><td><strong>Opus</strong></td><td>Complex architecture, deep reasoning, frontier research</td><td><span class="badge badge-red">$$$$</span></td></tr>
+</table>
+
+<p>Switch with <code>/model</code> or <span class="key">Ctrl</span>+<span class="key">P</span>. Use Opus for the hard parts, Sonnet for everything else.</p>
+
+<h3>Token-saving strategies</h3>
+<ol>
+  <li><strong>Use subagents for verbose operations</strong> &mdash; Their output stays in their context, not yours</li>
+  <li><strong>Keep CLAUDE.md under 200 lines</strong> &mdash; It loads every session</li>
+  <li><strong>Reduce MCP servers</strong> &mdash; Each adds tool definitions to context. Use <code>ENABLE_TOOL_SEARCH=auto:5</code> for many tools</li>
+  <li><strong>Use <code>/compact</code> with focus</strong> &mdash; <code>/compact focus on the auth refactor</code> preserves what matters</li>
+  <li><strong>Use Plan mode for exploration</strong> &mdash; Read-only operations before committing to changes</li>
+  <li><strong>Pipe for quick tasks</strong> &mdash; <code>git diff | claude -p "review"</code> uses a single turn, no session overhead</li>
+</ol>
+
+<h3>Budget caps</h3>
+<pre><code># Hard stop at $5
+claude -p --max-budget-usd 5 "refactor the auth module"</code></pre>
+
+<h3>Monitor usage</h3>
+<pre><code>/cost                              # Current session usage
+/context                           # What's consuming context space</code></pre>
+
+<h3>Set output token limit</h3>
+<pre><code>// In settings.json:
+{
+  "env": {
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "30000"
+  }
+}</code></pre>
+
+
 <h2 id="headless">Headless / SDK Mode</h2>
 <pre><code># Non-interactive with JSON output
 claude -p --output-format json --no-session-persistence "task"
@@ -1031,6 +1199,88 @@ claude mcp add|list|get|remove
 claude update</code></pre>
 
 
+<h2 id="cicd">CI/CD Integration</h2>
+
+<p>Use Claude Code in automated pipelines with headless mode (<code>-p</code>).</p>
+
+<h3>Automated code review on PRs</h3>
+<pre><code># .github/workflows/claude-review.yml
+name: Claude Code Review
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Claude Code
+        run: curl -fsSL https://claude.ai/install.sh | bash
+
+      - name: Review PR
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          DIFF=$(git diff origin/main...HEAD)
+          echo "$DIFF" | claude -p \
+            --model sonnet \
+            --max-budget-usd 2 \
+            "Review this PR diff for bugs, security issues, and code quality.
+             Be concise. Focus on actionable feedback only." \
+            > review.md
+
+      - name: Post review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('review.md', 'utf8');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: review
+            });</code></pre>
+
+<h3>Automated test generation</h3>
+<pre><code># Generate tests for changed files
+CHANGED=$(git diff --name-only origin/main...HEAD | grep -E '\.(ts|js)$')
+for file in $CHANGED; do
+  claude -p --model sonnet \
+    "Generate unit tests for $file. Output only the test file content." \
+    > "tests/$(basename $file .ts).test.ts"
+done</code></pre>
+
+<h3>Structured output for tooling</h3>
+<pre><code># Get JSON output for downstream processing
+claude -p --output-format json \
+  --json-schema '{"type":"object","properties":{
+    "issues":{"type":"array","items":{"type":"object","properties":{
+      "file":{"type":"string"},
+      "line":{"type":"number"},
+      "severity":{"type":"string"},
+      "message":{"type":"string"}
+    }}}
+  }}' \
+  "Analyze src/ for security vulnerabilities" | jq '.issues[]'</code></pre>
+
+<h3>Commit message generation</h3>
+<pre><code># In a git hook or CI step
+MSG=$(git diff --cached | claude -p --model haiku \
+  "Write a concise conventional commit message for this diff.
+   Format: type(scope): description. One line only.")
+git commit -m "$MSG"</code></pre>
+
+<div class="callout warning">
+  <div class="callout-title">Cost control in CI</div>
+  Always use <code>--max-budget-usd</code> in CI pipelines to prevent runaway costs. Use Haiku or Sonnet (not Opus) for automated tasks.
+</div>
+
+
 <h2 id="tips">Tips &amp; Best Practices</h2>
 <ol>
   <li><strong>Start with <code>/init</code></strong> to create a CLAUDE.md for your project</li>
@@ -1044,6 +1294,278 @@ claude update</code></pre>
   <li><strong>Pipe data in</strong> for quick analysis: <code>git diff | claude -p "review"</code></li>
   <li><strong>Use worktrees</strong> for parallel feature development</li>
 </ol>
+
+
+<!-- ==================== PLATFORM NOTES ==================== -->
+
+<h2 id="windows-gotchas">Windows-Specific Gotchas</h2>
+
+<p>Claude Code on Windows uses Git Bash (MINGW64). This works well, but there are quirks.</p>
+
+<h3>PATH conflicts</h3>
+<p>Other software can inject executables into your PATH that break Claude Code or its tools. Known culprits:</p>
+<table>
+  <tr><th>Software</th><th>Problem</th><th>Fix</th></tr>
+  <tr>
+    <td><strong>Topaz Video AI</strong></td>
+    <td>Bundles its own <code>ffmpeg.exe</code> that interferes with MiKTeX and other tools</td>
+    <td>Use a clean PATH in your session: <code>export PATH="/c/Users/You/AppData/.../bin:/usr/bin:/mingw64/bin"</code></td>
+  </tr>
+  <tr>
+    <td><strong>Anaconda/Miniconda</strong></td>
+    <td>Can shadow system Python and break <code>pip</code></td>
+    <td>Use full paths or deactivate conda: <code>conda deactivate</code></td>
+  </tr>
+  <tr>
+    <td><strong>Cygwin</strong></td>
+    <td>Conflicts with Git Bash's Unix tools</td>
+    <td>Don't mix Cygwin and Git Bash in PATH</td>
+  </tr>
+</table>
+
+<h3>Path format</h3>
+<p>Claude Code uses Unix-style paths in Git Bash:</p>
+<pre><code>/c/Users/Holger/Documents        # Git Bash style (use this)
+C:\Users\Holger\Documents         # Windows style (avoid in commands)
+D:/FromGitHubEtc/project          # Forward slashes work too</code></pre>
+
+<h3>LaTeX (MiKTeX) setup</h3>
+<pre><code># Install
+winget install MiKTeX.MiKTeX
+
+# Binary location
+C:\Users\You\AppData\Local\Programs\MiKTeX\miktex\bin\x64\pdflatex.exe
+
+# Add to PATH in .bashrc
+export PATH="$PATH:/c/Users/You/AppData/Local/Programs/MiKTeX/miktex/bin/x64"</code></pre>
+
+<h3>Line endings (CRLF vs LF)</h3>
+<p>Git on Windows defaults to CRLF. Claude Code writes LF. You'll see warnings like <code>LF will be replaced by CRLF</code>. This is harmless, but if it bothers you:</p>
+<pre><code>git config --global core.autocrlf input</code></pre>
+
+<h3>Image paste shortcut</h3>
+<p>On Windows, use <span class="key">Alt</span>+<span class="key">V</span> to paste images (not Ctrl+V, which pastes text from clipboard).</p>
+
+<h3>Long file paths</h3>
+<p>Windows has a 260-character path limit by default. Node modules can exceed this. Fix:</p>
+<pre><code># Run as admin in PowerShell:
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1</code></pre>
+
+
+<h2 id="comparison">Claude Code vs Cursor vs Copilot vs Windsurf</h2>
+
+<table>
+  <tr>
+    <th></th>
+    <th>Claude Code</th>
+    <th>Cursor</th>
+    <th>GitHub Copilot</th>
+    <th>Windsurf</th>
+  </tr>
+  <tr>
+    <td><strong>Interface</strong></td>
+    <td>Terminal CLI + IDE extensions</td>
+    <td>Full IDE (VS Code fork)</td>
+    <td>IDE plugin</td>
+    <td>Full IDE (VS Code fork)</td>
+  </tr>
+  <tr>
+    <td><strong>Model</strong></td>
+    <td>Claude (Opus/Sonnet/Haiku)</td>
+    <td>Multiple (Claude, GPT, etc.)</td>
+    <td>GPT-4o / Claude</td>
+    <td>Multiple</td>
+  </tr>
+  <tr>
+    <td><strong>Agentic loop</strong></td>
+    <td><span class="badge badge-green">Full</span> Multi-step, self-correcting</td>
+    <td><span class="badge badge-green">Yes</span> Composer agent</td>
+    <td><span class="badge badge-yellow">Limited</span> Workspace agent</td>
+    <td><span class="badge badge-green">Yes</span> Cascade</td>
+  </tr>
+  <tr>
+    <td><strong>Shell access</strong></td>
+    <td><span class="badge badge-green">Full</span> Runs any command</td>
+    <td><span class="badge badge-green">Yes</span></td>
+    <td><span class="badge badge-yellow">Limited</span></td>
+    <td><span class="badge badge-green">Yes</span></td>
+  </tr>
+  <tr>
+    <td><strong>Git integration</strong></td>
+    <td><span class="badge badge-green">Full</span> Commits, branches, PRs</td>
+    <td><span class="badge badge-yellow">Basic</span></td>
+    <td><span class="badge badge-green">Full</span> (GitHub native)</td>
+    <td><span class="badge badge-yellow">Basic</span></td>
+  </tr>
+  <tr>
+    <td><strong>Subagents</strong></td>
+    <td><span class="badge badge-green">Yes</span> Custom, parallel</td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-red">No</span></td>
+  </tr>
+  <tr>
+    <td><strong>MCP support</strong></td>
+    <td><span class="badge badge-green">Full</span></td>
+    <td><span class="badge badge-green">Yes</span></td>
+    <td><span class="badge badge-yellow">Limited</span></td>
+    <td><span class="badge badge-yellow">Limited</span></td>
+  </tr>
+  <tr>
+    <td><strong>Hooks / automation</strong></td>
+    <td><span class="badge badge-green">Full</span> 12+ event types</td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-red">No</span></td>
+  </tr>
+  <tr>
+    <td><strong>Custom skills</strong></td>
+    <td><span class="badge badge-green">Yes</span> Markdown-based</td>
+    <td><span class="badge badge-yellow">Rules files</span></td>
+    <td><span class="badge badge-yellow">Instructions</span></td>
+    <td><span class="badge badge-yellow">Rules</span></td>
+  </tr>
+  <tr>
+    <td><strong>Persistent memory</strong></td>
+    <td><span class="badge badge-green">Auto + manual</span></td>
+    <td><span class="badge badge-yellow">Notepad</span></td>
+    <td><span class="badge badge-yellow">Instructions</span></td>
+    <td><span class="badge badge-yellow">Rules</span></td>
+  </tr>
+  <tr>
+    <td><strong>Headless / CI</strong></td>
+    <td><span class="badge badge-green">Full</span> <code>-p</code> flag</td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-yellow">CLI preview</span></td>
+    <td><span class="badge badge-red">No</span></td>
+  </tr>
+  <tr>
+    <td><strong>Mobile (Android)</strong></td>
+    <td><span class="badge badge-green">Yes</span> (Termux)</td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-red">No</span></td>
+  </tr>
+  <tr>
+    <td><strong>Plan mode</strong></td>
+    <td><span class="badge badge-green">Yes</span> Read-only exploration</td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-red">No</span></td>
+    <td><span class="badge badge-red">No</span></td>
+  </tr>
+  <tr>
+    <td><strong>Pricing</strong></td>
+    <td>Claude subscription or API</td>
+    <td>$20/mo + API costs</td>
+    <td>$10-39/mo</td>
+    <td>$15/mo + credits</td>
+  </tr>
+</table>
+
+<h3>When to choose Claude Code</h3>
+<ul>
+  <li>You want <strong>terminal-first</strong> workflow (or use multiple IDEs)</li>
+  <li>You need <strong>automation</strong> &mdash; hooks, headless mode, CI/CD integration</li>
+  <li>You need <strong>subagents</strong> for parallel work</li>
+  <li>You want <strong>MCP integrations</strong> with external tools</li>
+  <li>You work on <strong>mobile</strong> (Android/Termux)</li>
+  <li>You need <strong>custom skills and persistent memory</strong></li>
+  <li>You prefer <strong>Claude models</strong> (especially Opus for complex reasoning)</li>
+</ul>
+
+<h3>When another tool might fit better</h3>
+<ul>
+  <li>You want <strong>inline autocomplete</strong> while typing (Copilot excels here)</li>
+  <li>You want a <strong>full GUI IDE</strong> with AI built in (Cursor, Windsurf)</li>
+  <li>You want to <strong>mix models</strong> from different providers in one tool (Cursor)</li>
+  <li>You're a <strong>visual learner</strong> who prefers clicking over typing</li>
+</ul>
+
+<div class="callout tip">
+  <div class="callout-title">They're not mutually exclusive</div>
+  Many developers use Claude Code <em>alongside</em> Copilot. Copilot handles inline autocomplete, Claude Code handles agentic tasks, refactors, and research. The VS Code extension makes them coexist nicely.
+</div>
+
+
+<!-- ==================== TROUBLESHOOTING ==================== -->
+
+<h2 id="troubleshooting">Troubleshooting &amp; FAQ</h2>
+
+<h3>Common Errors</h3>
+<table>
+  <tr><th>Error</th><th>Cause</th><th>Fix</th></tr>
+  <tr>
+    <td><code>command not found: claude</code></td>
+    <td>Not in PATH</td>
+    <td>Reinstall: <code>curl -fsSL https://claude.ai/install.sh | bash</code> or check <code>~/.local/bin</code></td>
+  </tr>
+  <tr>
+    <td><code>Authentication failed</code></td>
+    <td>Token expired or invalid</td>
+    <td><code>claude auth logout && claude auth login</code></td>
+  </tr>
+  <tr>
+    <td><code>Context window full</code></td>
+    <td>Too much in conversation + files</td>
+    <td><code>/compact</code> or start fresh with <code>/clear</code></td>
+  </tr>
+  <tr>
+    <td><code>MODULE_NOT_FOUND</code></td>
+    <td>Node.js upgraded, npm packages broken</td>
+    <td><code>npm install -g @anthropic-ai/claude-code</code></td>
+  </tr>
+  <tr>
+    <td><code>ENOENT: /tmp/...</code></td>
+    <td>/tmp not writable (Termux)</td>
+    <td>Use proot: <code>proot -b $PREFIX/tmp:/tmp claude</code></td>
+  </tr>
+  <tr>
+    <td>MCP server not connecting</td>
+    <td>Config issue or server down</td>
+    <td><code>claude mcp list</code> and <code>/mcp</code> to diagnose</td>
+  </tr>
+  <tr>
+    <td>Hook never fires</td>
+    <td>Wrong matcher or event name</td>
+    <td>Check regex, enable verbose with <span class="key">Ctrl</span>+<span class="key">O</span></td>
+  </tr>
+  <tr>
+    <td><code>Rate limit exceeded</code></td>
+    <td>Too many API requests</td>
+    <td>Wait, or switch to a different model: <code>/model</code></td>
+  </tr>
+  <tr>
+    <td>Diff looks wrong in IDE</td>
+    <td>File changed outside Claude</td>
+    <td><code>/undo</code> then re-apply, or refresh IDE</td>
+  </tr>
+</table>
+
+<h3>FAQ</h3>
+
+<h4>Q: Does Claude Code send my code to Anthropic's servers?</h4>
+<p>Claude Code sends file contents and commands to the Claude API for processing. Your data is subject to Anthropic's data policies. For sensitive projects, review the <a href="https://www.anthropic.com/policies">Anthropic privacy policy</a>.</p>
+
+<h4>Q: Can I use Claude Code offline?</h4>
+<p>No. Claude Code requires an internet connection to communicate with the Claude API.</p>
+
+<h4>Q: How do I update Claude Code?</h4>
+<p>Native installs auto-update. For npm: <code>npm update -g @anthropic-ai/claude-code</code>. For Homebrew: <code>brew upgrade claude-code</code>.</p>
+
+<h4>Q: Can multiple people use the same CLAUDE.md?</h4>
+<p>Yes. <code>.claude/CLAUDE.md</code> is checked into git and shared with the team. Use <code>.claude/CLAUDE.local.md</code> for personal overrides.</p>
+
+<h4>Q: What happens to my session when I close the terminal?</h4>
+<p>Sessions are saved. Resume with <code>claude -c</code> (last session) or <code>claude -r "name"</code> (specific session).</p>
+
+<h4>Q: Can Claude Code work with monorepos?</h4>
+<p>Yes. Use <code>--add-dir</code> to include multiple packages: <code>claude --add-dir packages/api --add-dir packages/web</code></p>
+
+<h4>Q: Is there a free tier?</h4>
+<p>Claude Code is included with Claude Pro, Team, and Enterprise subscriptions. You can also use it with Anthropic API credits (pay-per-token).</p>
+
+<h4>Q: Can I use it without VS Code?</h4>
+<p>Absolutely. Claude Code is terminal-first. VS Code and JetBrains are optional integrations. Many power users prefer the terminal exclusively.</p>
 
 
 <!-- ==================== ANDROID / TERMUX ==================== -->
