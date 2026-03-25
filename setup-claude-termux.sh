@@ -18,8 +18,9 @@
 #   3. Installs Claude Code (or fixes broken install)
 #   4. Sets up Android storage access
 #   5. Configures .bashrc (proot alias, TMPDIR)
-#   6. Optional: math, science, LaTeX, GitHub CLI
-#   7. Launches Claude Code
+#   6. Optional: math, science, LaTeX, GitHub CLI, Lean 4 info
+#   7. Shows Prometheus-Crystal capability coverage
+#   8. Launches Claude Code
 #
 # Source: https://skool.com/early-ai-adopters
 # ══════════════════════════════════════════════════
@@ -90,10 +91,27 @@ show_status() {
     check_pkg poppler           && ok "Poppler (PDF tools)" || info "Poppler not installed"
 
     echo ""
+    echo "🔬 Formal Verification:"
+    info "Lean 4 — not available on ARM64/Termux (no official build)"
+    info "Coq    — not available on ARM64/Termux"
+    info "Proof work uses natural-language mode on Android."
+
+    echo ""
     echo "⚙️  Shell Config:"
     check_bashrc "proot -b /data/data/com.termux/files/usr/tmp:/tmp claude" && ok "Claude proot alias in .bashrc" || warn "Claude proot alias missing"
     check_bashrc "export TMPDIR"  && ok "TMPDIR configured"                || warn "TMPDIR not configured"
     [ -d "$HOME/storage/downloads" ] && ok "Storage access enabled"        || warn "Storage not set up (run termux-setup-storage)"
+
+    echo ""
+    echo "🧠 Prometheus-Crystal Capability Coverage:"
+    check_pkg pari && check_pip numpy                          && ok "Mathematical Awareness"  || warn "Mathematical Awareness (needs PARI/GP + Python)"
+    check_pip numpy && check_pkg pari                          && ok "Deep Investigation"      || warn "Deep Investigation (needs Python + PARI/GP)"
+    check_pkg pari                                             && ok "Proof Construction (natural-language mode)" || warn "Proof Construction (needs PARI/GP)"
+    check_pip numpy                                            && ok "Creative Synthesis"       || warn "Creative Synthesis (needs Python)"
+    check_cmd git                                              && ok "Software Engineering"     || warn "Software Engineering (needs Git)"
+    (check_pkg texlive-installer || check_pkg tectonic)        && ok "Paper Writing"            || warn "Paper Writing (needs LaTeX)"
+    check_pip scipy                                            && ok "Stochastic Methods"       || warn "Stochastic Methods (needs SciPy)"
+    check_pip numpy                                            && ok "Physics Awareness"        || warn "Physics Awareness (needs NumPy)"
 
     echo ""
     echo "🐍 Python Modules (pip):"
@@ -229,7 +247,7 @@ echo "================================"
 echo ""
 
 if [ "$MODE" = "all" ]; then
-    SELECTIONS="1 2 3 4 5 6 7 8 9 10"
+    SELECTIONS="1 2 3 4 5 6 7 8 9 10 11"
 else
     echo "📐 Optional packages:"
     echo ""
@@ -243,6 +261,7 @@ else
     check_pkg tectonic          && echo "    8) Tectonic         ✅ installed" || echo "    8) Tectonic         — modern LaTeX compiler"
     check_pkg gh                && echo "    9) GitHub CLI       ✅ installed" || echo "    9) GitHub CLI       — gh auth, PRs, issues"
     check_pkg poppler           && echo "   10) Poppler          ✅ installed" || echo "   10) Poppler          — PDF tools"
+    echo "   11) Lean 4 info      — formal proof assistant (ARM64 note)"
     echo ""
     echo "   Enter numbers (e.g. 1 3 9), 'all', or Enter to skip:"
     read -p "   > " SELECTIONS
@@ -273,11 +292,12 @@ if [ -n "$SELECTIONS" ]; then
         fi
     }
 
-    [[ "$SELECTIONS" == *"all"* ]] && SELECTIONS="1 2 3 4 5 6 7 8 9 10"
+    [[ "$SELECTIONS" == *"all"* ]] && SELECTIONS="1 2 3 4 5 6 7 8 9 10 11"
 
     # Case numbers match menu numbers exactly:
     #  1=PARI/GP  2=Maxima     3=NumPy   4=SciPy   5=SymPy
     #  6=Matplotlib  7=TexLive  8=Tectonic  9=GitHub CLI  10=Poppler
+    #  11=Lean 4 info
     for sel in $SELECTIONS; do
         case $sel in
             1)  install_pkg pari "PARI/GP" ;;
@@ -308,6 +328,16 @@ if [ -n "$SELECTIONS" ]; then
                 fi
                 ;;
             10) install_pkg poppler "Poppler (PDF tools)" ;;
+            11)
+                echo ""
+                info "🔬 Lean 4 (formal proof assistant)"
+                info "   Lean 4 has NO official ARM64 build — it cannot run on Termux."
+                info "   Proof Construction uses natural-language verification on Android."
+                info "   For formal verification, use Lean 4 on Linux (x86_64) or Windows:"
+                info "     curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh"
+                info "   See: Prometheus-Crystal-Lab/Prometheus.env/setup-linux.sh"
+                info "         Prometheus-Crystal-Lab/Prometheus.env/setup-windows.sh"
+                ;;
         esac
     done
 fi
