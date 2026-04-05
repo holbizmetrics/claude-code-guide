@@ -662,6 +662,7 @@
   <a href="#yolo-mode">YOLO Mode</a>
   <a href="#cli-reference">CLI Reference</a>
   <a href="#git-workflows">Git Workflows</a>
+  <a href="#small-commands">Small Commands, Big Impact</a>
   <a href="#tips">Tips &amp; Best Practices</a>
 
   <a class="section-header">Platform Notes</a>
@@ -2051,6 +2052,125 @@ claude --worktree feature-b         # Second terminal: feature B</code></pre>
   }
 }</code></pre>
   Claude commits only when tests pass. Built-in CI.
+</div>
+
+
+<h2 id="small-commands">Small Commands, Big Impact</h2>
+<p>The flashy features get all the attention. These don't &mdash; but together they transform your daily workflow.</p>
+
+<h3>Context awareness</h3>
+<table>
+  <tr><th>Command</th><th>What</th><th>Why it matters</th></tr>
+  <tr>
+    <td><code>/context</code></td>
+    <td>Show context window usage (%)</td>
+    <td>Know when you're about to hit the wall. Plan your <code>/compact</code> instead of being surprised</td>
+  </tr>
+  <tr>
+    <td><code>/cost</code></td>
+    <td>Show token costs for this session</td>
+    <td>Track spend per session. Big sessions can cost more than you think</td>
+  </tr>
+  <tr>
+    <td><code>/compact</code></td>
+    <td>Compress context without clearing</td>
+    <td>Keeps working memory but frees space. Use proactively, not after you've already hit the limit</td>
+  </tr>
+  <tr>
+    <td><code>/export</code></td>
+    <td>Export current conversation</td>
+    <td>Save before compaction eats the details. Compacted exports lose the original messages</td>
+  </tr>
+</table>
+
+<h3>Session control</h3>
+<table>
+  <tr><th>Command</th><th>What</th><th>Why it matters</th></tr>
+  <tr>
+    <td><code>/name my-task</code></td>
+    <td>Name or rename the current session</td>
+    <td>Without this, sessions show up as their first message &mdash; often "fix the bug" or "boot up from ."</td>
+  </tr>
+  <tr>
+    <td><code>/status</code></td>
+    <td>Show active model, permissions, hooks</td>
+    <td>When something feels off, this tells you what's actually loaded</td>
+  </tr>
+  <tr>
+    <td><code>/doctor</code></td>
+    <td>Diagnose setup issues</td>
+    <td>First thing to try when stuff breaks. Checks Node, auth, permissions, hooks</td>
+  </tr>
+  <tr>
+    <td><code>/memory</code></td>
+    <td>View and manage auto-memory</td>
+    <td>See what Claude remembers about you and your project. Delete entries that are wrong or stale</td>
+  </tr>
+  <tr>
+    <td><code>/init</code></td>
+    <td>Generate a CLAUDE.md from your codebase</td>
+    <td>Seeds project instructions so Claude understands your repo from the first message</td>
+  </tr>
+</table>
+
+<h3>Keyboard shortcuts</h3>
+<table>
+  <tr><th>Key</th><th>What</th><th>Why it matters</th></tr>
+  <tr>
+    <td><code>Shift+Tab</code></td>
+    <td>Cycle permission accept modes</td>
+    <td>Toggle between auto-accept and manual without restarting</td>
+  </tr>
+  <tr>
+    <td><code>Esc</code></td>
+    <td>Cancel current operation</td>
+    <td>Stop a runaway agent or long-running tool call immediately</td>
+  </tr>
+  <tr>
+    <td><code>!</code> + command</td>
+    <td>Run shell command inline</td>
+    <td>Stay in the conversation, run a quick <code>!git status</code> or <code>!ls</code> without leaving</td>
+  </tr>
+  <tr>
+    <td><code>Ctrl+O</code></td>
+    <td>Expand collapsed output</td>
+    <td>Tool call results are collapsed by default. Expand to see full output</td>
+  </tr>
+  <tr>
+    <td><code>/undo</code></td>
+    <td>Undo last file changes</td>
+    <td>Claude tracks all edits. Undo fearlessly &mdash; it won't lose the conversation context</td>
+  </tr>
+</table>
+
+<h3>CLI one-liners</h3>
+<table>
+  <tr><th>Command</th><th>What</th><th>Why it matters</th></tr>
+  <tr>
+    <td><code>git diff | claude -p "review"</code></td>
+    <td>Pipe data in for quick analysis</td>
+    <td>No session overhead. Get a review, explanation, or rewrite in one shot</td>
+  </tr>
+  <tr>
+    <td><code>claude -p "explain" &lt; file.py</code></td>
+    <td>Quick file analysis</td>
+    <td>One-off understanding without starting a full session</td>
+  </tr>
+  <tr>
+    <td><code>claude --model sonnet</code></td>
+    <td>Start with a specific model</td>
+    <td>Use Sonnet for quick tasks, Opus for complex ones. Save cost where it doesn't matter</td>
+  </tr>
+  <tr>
+    <td><code>claude -c</code></td>
+    <td>Continue last session</td>
+    <td>Pick up exactly where you left off. Your context, files, and conversation are all there</td>
+  </tr>
+</table>
+
+<div class="callout tip">
+  <div class="callout-title">The compounding effect</div>
+  None of these saves more than a few seconds individually. But <code>/name</code> + tab colors + <code>/context</code> monitoring + proactive <code>/compact</code> + <code>/export</code> before key milestones = a workflow where you never lose work, never hit context limits by surprise, and can always find your sessions later. The little things compound.
 </div>
 
 
