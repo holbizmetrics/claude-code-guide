@@ -333,6 +333,31 @@ def find_session(session_id):
 
 # ─── Commands ────────────────────────────────────────────────────────────────
 
+def _session_preview(session, max_msgs=4):
+    """Get a list of preview lines showing what the session was about."""
+    session.parse()
+    previews = []
+    seen_first = False
+    for m in session.messages:
+        if m.role != "user" or len(m.text) <= 5:
+            continue
+        text = m.text.replace("\n", " ").replace("\r", " ")
+        text = re.sub(r"\s+", " ", text).strip()
+        # Skip the boot/first message (already shown as summary)
+        if not seen_first:
+            seen_first = True
+            continue
+        # Skip boot skill invocations
+        if text.startswith("Boot Prometheus") or text.startswith("Base directory for this skill"):
+            continue
+        if len(text) > 90:
+            text = text[:90] + "..."
+        previews.append(text)
+        if len(previews) >= max_msgs:
+            break
+    return previews
+
+
 def cmd_list(args):
     """List all sessions with summaries."""
     sessions = find_all_sessions(args.project)
@@ -341,6 +366,7 @@ def cmd_list(args):
         return
 
     limit = args.limit or 20
+    detail = getattr(args, "detail", False)
     current_project = None
 
     for s in sessions[:limit]:
@@ -360,6 +386,13 @@ def cmd_list(args):
         size_kb = s.size / 1024
         summary = s.summary(80)
         print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {size_kb:6.0f}KB  {age_str:>8}  {summary}")
+
+        if detail:
+            previews = _session_preview(s)
+            for p in previews:
+                print(f"              > {p}")
+            if previews:
+                print()
 
     total = len(sessions)
     if total > limit:
@@ -1274,6 +1307,7 @@ tr:hover { background: var(--hover); }
 
 _INTERACTIVE_HELP = (
     "  list                          Show recent sessions\n"
+    "  list --detail                 Show with topic previews\n"
     "  list --project crystal        Filter by project\n"
     "  search \"react hooks\"          Search across all chats\n"
     "  export SESSION --format html  Export session (md/html/txt/tex)\n"
@@ -1407,6 +1441,7 @@ Examples:
     p = sub.add_parser("list", aliases=["ls"], help="List sessions with summaries")
     p.add_argument("--project", "-p", help="Filter by project name")
     p.add_argument("--limit", "-n", type=int, help="Max sessions to show")
+    p.add_argument("--detail", "-d", action="store_true", help="Show preview of each session's topics")
 
     # search
     p = sub.add_parser("search", aliases=["grep", "find"], help="Search across all conversations")
