@@ -111,6 +111,8 @@ python3 claude-chat.py serve --no-open           # Don't auto-open browser
 
 Dark-themed web UI with search, clickable sessions, and full conversation view.
 
+> **Security note:** The server has no authentication and binds to localhost only. Do not forward the port or expose it on a network — your conversations may contain sensitive code and credentials.
+
 ### `protect` — Stop Claude Code from deleting your sessions
 
 ```

@@ -31,14 +31,13 @@ License: MIT
 
 import argparse
 import json
-import os
 import sys
 import re
 import time
 import shutil
 import html as html_mod
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 import webbrowser
@@ -113,7 +112,6 @@ class Session:
         if self._parsed:
             return
         self._parsed = True
-        pending_tool_results = {}
 
         try:
             with open(self.path, "r", encoding="utf-8", errors="replace") as f:
@@ -558,7 +556,7 @@ def cmd_extract(args):
         print(f"Your messages in session {session.short_id}:\n")
         for m in session.user_messages():
             clean = m.text.strip()
-            if len(clean) > 10 and "Boot Prometheus" not in clean[:20]:
+            if len(clean) > 10:
                 print(f"  > {clean[:300]}")
                 if len(clean) > 300:
                     print(f"    [...{len(clean)} chars]")
@@ -696,6 +694,7 @@ def cmd_serve(args):
 
     url = f"http://127.0.0.1:{port}"
     print(f"Claude Chat Browser running at {url}")
+    print("Note: No authentication. Do not expose this port on a network.")
     print("Press Ctrl+C to stop.\n")
 
     if not args.no_open:
@@ -727,8 +726,12 @@ def cmd_protect(args):
 
     settings["cleanupPeriodDays"] = 99999
 
-    with open(SETTINGS_FILE, "w") as f:
+    # Atomic write: write to temp file, then rename (prevents corruption on crash)
+    tmp = SETTINGS_FILE.with_suffix(".tmp")
+    with open(tmp, "w") as f:
         json.dump(settings, f, indent=2)
+        f.write("\n")
+    tmp.replace(SETTINGS_FILE)
 
     print(f"Protected. Set cleanupPeriodDays = 99999 in {SETTINGS_FILE}")
     print("Your sessions will no longer be auto-deleted.")

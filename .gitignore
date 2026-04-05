@@ -1,0 +1,9 @@
+# Exported conversations (may contain sensitive content)
+claude-chat_*.md
+claude-chat_*.html
+claude-chat_*.txt
+claude-chat_*.tex
+
+# Python
+__pycache__/
+*.pyc
