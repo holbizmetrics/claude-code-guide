@@ -1253,7 +1253,11 @@ tr:hover { background: var(--hover); }
     <h1>Claude Chat Browser</h1>
     <div class="stats">{{COUNT}} sessions across {{PROJECTS}} projects</div>
 </div>
-<form class="search-bar" action="/search" method="get">
+<form class="search-bar" action="/search" method="get" onsubmit="
+    this.querySelector('button').textContent='Searching\u2026';
+    this.querySelector('button').style.opacity='0.6';
+    this.querySelector('input').style.opacity='0.6';
+">
     <input type="text" name="q" placeholder="Search across all conversations..." autofocus>
     <button type="submit">Search</button>
 </form>
