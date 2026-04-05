@@ -47,17 +47,18 @@ import threading
 
 __version__ = "1.0.0"
 
-# Fix Windows console encoding (cp1252 can't handle Unicode box-drawing chars)
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-    try:
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+def _fix_windows_encoding():
+    """Fix Windows console encoding (cp1252 can't handle Unicode)."""
+    if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+    if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -186,15 +187,38 @@ class Session:
         return ""
 
     def summary(self, max_len=100):
-        """Get a one-line summary (first meaningful user message)."""
-        self.parse()
-        for m in self.messages:
-            if m.role == "user" and len(m.text) > 5:
-                clean = m.text.replace("\n", " ").replace("\r", " ")
-                clean = re.sub(r"\s+", " ", clean).strip()
-                if len(clean) > max_len:
-                    return clean[:max_len] + "..."
-                return clean
+        """Get a one-line summary (first meaningful user message). Fast: reads first ~50 lines only."""
+        if self._parsed:
+            for m in self.messages:
+                if m.role == "user" and len(m.text) > 5:
+                    clean = m.text.replace("\n", " ").replace("\r", " ")
+                    clean = re.sub(r"\s+", " ", clean).strip()
+                    return clean[:max_len] + "..." if len(clean) > max_len else clean
+            return "(empty session)"
+
+        # Fast path: scan first ~50 lines without full parse
+        try:
+            with open(self.path, "r", encoding="utf-8", errors="replace") as f:
+                for i, line in enumerate(f):
+                    if i > 50:
+                        break
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    msg_data = obj.get("message", obj)
+                    role = msg_data.get("role", obj.get("type", ""))
+                    if role == "user":
+                        text = self._extract_text(msg_data.get("content", ""))
+                        if text and len(text) > 5 and "system-reminder" not in text:
+                            clean = text.replace("\n", " ").replace("\r", " ")
+                            clean = re.sub(r"\s+", " ", clean).strip()
+                            return clean[:max_len] + "..." if len(clean) > max_len else clean
+        except (IOError, OSError):
+            pass
         return "(empty session)"
 
     def user_messages(self):
@@ -664,11 +688,21 @@ def cmd_serve(args):
             page = page.replace("{{COUNT}}", str(len(results)))
             self._send_html(page)
 
-    server = HTTPServer(("127.0.0.1", port), ChatHandler)
+    try:
+        server = HTTPServer(("127.0.0.1", port), ChatHandler)
+    except OSError as e:
+        if "address already in use" in str(e).lower() or getattr(e, "errno", 0) == 10048:
+            print(f"Port {port} is already in use. Try: claude-chat serve --port {port + 1}")
+            return
+        raise
+
     url = f"http://127.0.0.1:{port}"
     print(f"Claude Chat Browser running at {url}")
     print("Press Ctrl+C to stop.\n")
-    webbrowser.open(url)
+
+    if not args.no_open:
+        webbrowser.open(url)
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -768,14 +802,15 @@ def export_txt(session):
 def export_tex(session):
     """Export session as LaTeX."""
     def tex_escape(text):
-        replacements = {
-            "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#",
-            "_": r"\_", "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}",
-            "^": r"\^{}", "\\": r"\textbackslash{}",
+        # Single-pass replacement to avoid double-escaping (backslash must not
+        # be replaced sequentially after other replacements introduce backslashes)
+        conv = {
+            "\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$",
+            "#": r"\#", "_": r"\_", "{": r"\{", "}": r"\}",
+            "~": r"\textasciitilde{}", "^": r"\^{}",
         }
-        for old, new in replacements.items():
-            text = text.replace(old, new)
-        return text
+        pattern = re.compile("|".join(re.escape(k) for k in conv))
+        return pattern.sub(lambda m: conv[m.group()], text)
 
     lines = [
         r"\documentclass[11pt,a4paper]{article}",
@@ -1073,6 +1108,12 @@ tr:hover { background: var(--hover); }
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
+    if sys.version_info < (3, 7):
+        print("claude-chat requires Python 3.7 or later.")
+        sys.exit(1)
+
+    _fix_windows_encoding()
+
     parser = argparse.ArgumentParser(
         prog="claude-chat",
         description="One tool for all your Claude Code conversations.",
@@ -1135,6 +1176,7 @@ Examples:
     # serve
     p = sub.add_parser("serve", aliases=["web", "browse"], help="Browse in your browser")
     p.add_argument("--port", type=int, default=3456, help="Port number")
+    p.add_argument("--no-open", action="store_true", help="Don't auto-open browser")
 
     # protect
     sub.add_parser("protect", help="Prevent auto-deletion of old sessions")
