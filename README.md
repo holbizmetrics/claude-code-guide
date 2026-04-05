@@ -5,6 +5,7 @@
 Zero dependencies. One file. Works everywhere Python 3.7+ runs.
 
 ```
+python3 claude-chat.py                               # Interactive mode
 python3 claude-chat.py list                          # See all your sessions
 python3 claude-chat.py search "react hooks"          # Search across everything
 python3 claude-chat.py export a7e44ed0 --format html # Export with dark theme
@@ -34,6 +35,26 @@ Requirements: Python 3.7+. No pip install. No dependencies.
 > **Note:** On Windows, use `python` instead of `python3`.
 
 ## Commands
+
+### Interactive mode
+
+Run with no arguments to enter interactive mode:
+
+```
+python3 claude-chat.py
+```
+
+```
+claude-chat v1.0.0 — interactive mode
+Type a command (list, search, export, stats, ...) or 'help'. Ctrl+C to exit.
+
+claude-chat> list --limit 5
+claude-chat> search "react hooks"
+claude-chat> export a7e44ed0 --format html --rich --open
+claude-chat> quit
+```
+
+No need to retype `python3 claude-chat.py` for every command.
 
 ### `list` — See all your sessions
 
@@ -66,11 +87,14 @@ Searches all sessions, shows matching snippets with context. Your personal knowl
 python3 claude-chat.py export a7e44ed0                    # Markdown (default)
 python3 claude-chat.py export a7e44ed0 --format html      # Dark-themed HTML
 python3 claude-chat.py export a7e44ed0 --format html --open  # Export and open
+python3 claude-chat.py export a7e44ed0 --format html --rich  # Rich: math, tables, links
 python3 claude-chat.py export a7e44ed0 --format tex       # LaTeX
 python3 claude-chat.py export a7e44ed0 --format txt       # Plain text
 ```
 
 HTML export uses a Tokyo Night dark theme with syntax-highlighted code, collapsible tool calls, and print-friendly CSS.
+
+The `--rich` flag adds KaTeX math rendering (`$...$` and `$$...$$`), markdown tables as proper HTML tables, clickable links, and markdown headings.
 
 ### `backup` — Protect your conversations
 

@@ -41,6 +41,7 @@ from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 import webbrowser
+import shlex
 
 __version__ = "1.0.0"
 
@@ -1271,6 +1272,77 @@ tr:hover { background: var(--hover); }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
+def cmd_interactive(parser):
+    """Interactive REPL mode."""
+    try:
+        import readline  # noqa: F401 — enables arrow keys / history on Unix
+    except ImportError:
+        pass  # Windows: pyreadline3 optional, basic input still works
+
+    print(f"claude-chat v{__version__} — interactive mode")
+    print("Type a command (list, search, export, stats, ...) or 'help'. Ctrl+C to exit.\n")
+
+    while True:
+        try:
+            line = input("claude-chat> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye.")
+            break
+
+        if not line:
+            continue
+
+        if line in ("quit", "exit", "q"):
+            print("Bye.")
+            break
+
+        if line == "help":
+            parser.print_help()
+            print()
+            continue
+
+        try:
+            tokens = shlex.split(line)
+        except ValueError as e:
+            print(f"Parse error: {e}")
+            continue
+
+        try:
+            args = parser.parse_args(tokens)
+        except SystemExit:
+            # argparse calls sys.exit on --help or errors; catch it
+            continue
+
+        if not args.command:
+            print("Unknown command. Type 'help' for available commands.")
+            continue
+
+        try:
+            cmd = args.command
+            if cmd in ("list", "ls"):
+                cmd_list(args)
+            elif cmd in ("search", "grep", "find"):
+                cmd_search(args)
+            elif cmd == "export":
+                cmd_export(args)
+            elif cmd == "backup":
+                cmd_backup(args)
+            elif cmd == "stats":
+                cmd_stats(args)
+            elif cmd == "extract":
+                cmd_extract(args)
+            elif cmd in ("serve", "web", "browse"):
+                cmd_serve(args)
+            elif cmd == "protect":
+                cmd_protect(args)
+            else:
+                print(f"Unknown command: {cmd}")
+        except Exception as e:
+            print(f"Error: {e}")
+
+        print()
+
+
 def main():
     if sys.version_info < (3, 7):
         print("claude-chat requires Python 3.7 or later.")
@@ -1349,7 +1421,7 @@ Examples:
     args = parser.parse_args()
 
     if not args.command:
-        parser.print_help()
+        cmd_interactive(parser)
         return
 
     cmd = args.command
