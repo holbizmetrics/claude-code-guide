@@ -1319,7 +1319,9 @@ _INTERACTIVE_HELP = (
     "  backup --watch                Continuous backup\n"
     "  protect                       Prevent auto-deletion\n"
     "  help                          Show this help\n"
-    "  quit                          Exit"
+    "  quit                          Exit\n"
+    "\n"
+    "  Tip: run 'protect' to stop auto-deletion (sets cleanupPeriodDays=99999)"
 )
 
 _VALID_COMMANDS = {
