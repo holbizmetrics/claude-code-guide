@@ -36,14 +36,12 @@ import sys
 import re
 import time
 import shutil
-import hashlib
 import html as html_mod
 from pathlib import Path
 from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 import webbrowser
-import threading
 
 __version__ = "1.0.0"
 

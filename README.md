@@ -5,12 +5,12 @@
 Zero dependencies. One file. Works everywhere Python 3.7+ runs.
 
 ```
-python claude-chat.py list                      # See all your sessions
-python claude-chat.py search "react hooks"      # Search across everything
-python claude-chat.py export a7e44ed0 --html    # Export with dark theme
-python claude-chat.py serve                     # Browse in your browser
-python claude-chat.py backup --watch            # Continuous backup
-python claude-chat.py protect                   # Stop auto-deletion
+python3 claude-chat.py list                          # See all your sessions
+python3 claude-chat.py search "react hooks"          # Search across everything
+python3 claude-chat.py export a7e44ed0 --format html # Export with dark theme
+python3 claude-chat.py serve                         # Browse in your browser
+python3 claude-chat.py backup --watch                # Continuous backup
+python3 claude-chat.py protect                       # Stop auto-deletion
 ```
 
 ## Why
@@ -31,14 +31,16 @@ git clone https://github.com/holbizmetrics/claude-code-guide.git
 
 Requirements: Python 3.7+. No pip install. No dependencies.
 
+> **Note:** On Windows, use `python` instead of `python3`.
+
 ## Commands
 
 ### `list` — See all your sessions
 
 ```
-python claude-chat.py list
-python claude-chat.py list --project crystal    # Filter by project
-python claude-chat.py list --limit 100          # Show more
+python3 claude-chat.py list
+python3 claude-chat.py list --project crystal    # Filter by project
+python3 claude-chat.py list --limit 100          # Show more
 ```
 
 Output:
@@ -52,8 +54,8 @@ Output:
 ### `search` — Find anything across all conversations
 
 ```
-python claude-chat.py search "sobolev spaces"
-python claude-chat.py search "database migration" --project myapp
+python3 claude-chat.py search "sobolev spaces"
+python3 claude-chat.py search "database migration" --project myapp
 ```
 
 Searches all sessions, shows matching snippets with context. Your personal knowledge base you didn't know you had.
@@ -61,11 +63,11 @@ Searches all sessions, shows matching snippets with context. Your personal knowl
 ### `export` — Save to Markdown, HTML, plain text, or LaTeX
 
 ```
-python claude-chat.py export a7e44ed0                    # Markdown (default)
-python claude-chat.py export a7e44ed0 --format html      # Dark-themed HTML
-python claude-chat.py export a7e44ed0 --format html --open  # Export and open
-python claude-chat.py export a7e44ed0 --format tex       # LaTeX
-python claude-chat.py export a7e44ed0 --format txt       # Plain text
+python3 claude-chat.py export a7e44ed0                    # Markdown (default)
+python3 claude-chat.py export a7e44ed0 --format html      # Dark-themed HTML
+python3 claude-chat.py export a7e44ed0 --format html --open  # Export and open
+python3 claude-chat.py export a7e44ed0 --format tex       # LaTeX
+python3 claude-chat.py export a7e44ed0 --format txt       # Plain text
 ```
 
 HTML export uses a Tokyo Night dark theme with syntax-highlighted code, collapsible tool calls, and print-friendly CSS.
@@ -73,9 +75,9 @@ HTML export uses a Tokyo Night dark theme with syntax-highlighted code, collapsi
 ### `backup` — Protect your conversations
 
 ```
-python claude-chat.py backup                    # One-time backup
-python claude-chat.py backup --watch            # Continuous watcher
-python claude-chat.py backup --watch --interval 5  # Poll every 5s
+python3 claude-chat.py backup                    # One-time backup
+python3 claude-chat.py backup --watch            # Continuous watcher
+python3 claude-chat.py backup --watch --interval 5  # Poll every 5s
 ```
 
 The `--watch` mode runs as a separate process, polling for changes. Zero token cost. Survives Claude Code crashes. Keeps the last 5 versions per session.
@@ -85,8 +87,8 @@ Backups go to `~/claude-chat-backups/`.
 ### `stats` — Usage statistics
 
 ```
-python claude-chat.py stats
-python claude-chat.py stats --project myapp
+python3 claude-chat.py stats
+python3 claude-chat.py stats --project myapp
 ```
 
 Shows: session count, message counts, tool call frequency, code blocks, models used, largest sessions, project breakdown.
@@ -94,17 +96,17 @@ Shows: session count, message counts, tool call frequency, code blocks, models u
 ### `extract` — Pull out specific content
 
 ```
-python claude-chat.py extract a7e44ed0 --code       # All code blocks
-python claude-chat.py extract a7e44ed0 --ideas      # Your messages only
-python claude-chat.py extract a7e44ed0 --decisions  # Decision points
+python3 claude-chat.py extract a7e44ed0 --code       # All code blocks
+python3 claude-chat.py extract a7e44ed0 --ideas      # Your messages only
+python3 claude-chat.py extract a7e44ed0 --decisions  # Decision points
 ```
 
 ### `serve` — Browse in your browser
 
 ```
-python claude-chat.py serve                     # Opens http://127.0.0.1:3456
-python claude-chat.py serve --port 8080         # Custom port
-python claude-chat.py serve --no-open           # Don't auto-open browser
+python3 claude-chat.py serve                     # Opens http://127.0.0.1:3456
+python3 claude-chat.py serve --port 8080         # Custom port
+python3 claude-chat.py serve --no-open           # Don't auto-open browser
 ```
 
 Dark-themed web UI with search, clickable sessions, and full conversation view.
@@ -112,7 +114,7 @@ Dark-themed web UI with search, clickable sessions, and full conversation view.
 ### `protect` — Stop Claude Code from deleting your sessions
 
 ```
-python claude-chat.py protect
+python3 claude-chat.py protect
 ```
 
 Sets `cleanupPeriodDays: 99999` in your Claude Code settings. **Run this first** if you haven't already.
