@@ -1272,6 +1272,28 @@ tr:hover { background: var(--hover); }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
+_INTERACTIVE_HELP = (
+    "  list                          Show recent sessions\n"
+    "  list --project crystal        Filter by project\n"
+    "  search \"react hooks\"          Search across all chats\n"
+    "  export SESSION --format html  Export session (md/html/txt/tex)\n"
+    "  export SESSION --format html --rich   Rich HTML (math, tables, links)\n"
+    "  stats                         Usage statistics\n"
+    "  extract SESSION --code        Extract code blocks\n"
+    "  extract SESSION --ideas       Extract your messages\n"
+    "  serve                         Open browser UI\n"
+    "  backup --watch                Continuous backup\n"
+    "  protect                       Prevent auto-deletion\n"
+    "  help                          Show this help\n"
+    "  quit                          Exit"
+)
+
+_VALID_COMMANDS = {
+    "list", "ls", "search", "grep", "find", "export", "backup",
+    "stats", "extract", "serve", "web", "browse", "protect",
+}
+
+
 def cmd_interactive(parser):
     """Interactive REPL mode."""
     try:
@@ -1279,8 +1301,9 @@ def cmd_interactive(parser):
     except ImportError:
         pass  # Windows: pyreadline3 optional, basic input still works
 
-    print(f"claude-chat v{__version__} — interactive mode")
-    print("Type a command (list, search, export, stats, ...) or 'help'. Ctrl+C to exit.\n")
+    print(f"claude-chat v{__version__} — interactive mode\n")
+    print(_INTERACTIVE_HELP)
+    print()
 
     while True:
         try:
@@ -1296,8 +1319,8 @@ def cmd_interactive(parser):
             print("Bye.")
             break
 
-        if line == "help":
-            parser.print_help()
+        if line in ("help", "?", "h"):
+            print(_INTERACTIVE_HELP)
             print()
             continue
 
@@ -1307,6 +1330,13 @@ def cmd_interactive(parser):
             print(f"Parse error: {e}")
             continue
 
+        # Check first token before handing to argparse (avoids ugly error dump)
+        if tokens[0] not in _VALID_COMMANDS and not tokens[0].startswith("-"):
+            print(f"  Unknown command: '{tokens[0]}'")
+            print(f"  Try: list, search, export, stats, serve, help")
+            print()
+            continue
+
         try:
             args = parser.parse_args(tokens)
         except SystemExit:
@@ -1314,7 +1344,7 @@ def cmd_interactive(parser):
             continue
 
         if not args.command:
-            print("Unknown command. Type 'help' for available commands.")
+            print("  Type a command or 'help' to see options.")
             continue
 
         try:
