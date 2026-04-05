@@ -129,7 +129,7 @@ class Session:
 
                     if role == "user":
                         text = self._extract_text(msg_data.get("content", ""))
-                        if text and "system-reminder" not in text:
+                        if text and "<system-reminder>" not in text:
                             self.messages.append(Message("user", text))
 
                     elif role == "assistant":
@@ -177,7 +177,7 @@ class Session:
                 if isinstance(c, dict):
                     if c.get("type") == "text":
                         t = c.get("text", "")
-                        if "tool_result" not in t[:30] and "Launching skill" not in t:
+                        if '"tool_result"' not in t[:50] and t.strip()[:15] != "Launching skill":
                             parts.append(t)
             return "\n".join(parts).strip()
         return ""
@@ -209,7 +209,7 @@ class Session:
                     role = msg_data.get("role", obj.get("type", ""))
                     if role == "user":
                         text = self._extract_text(msg_data.get("content", ""))
-                        if text and len(text) > 5 and "system-reminder" not in text:
+                        if text and len(text) > 5 and "<system-reminder>" not in text:
                             clean = text.replace("\n", " ").replace("\r", " ")
                             clean = re.sub(r"\s+", " ", clean).strip()
                             return clean[:max_len] + "..." if len(clean) > max_len else clean
@@ -271,8 +271,11 @@ def find_all_sessions(project_filter=None):
         if project_filter and project_filter.lower() not in project_dir.name.lower():
             continue
         for jsonl in project_dir.glob("*.jsonl"):
-            if jsonl.stat().st_size > 100:  # skip tiny/empty files
-                sessions.append(Session(jsonl))
+            try:
+                if jsonl.stat().st_size > 100:  # skip tiny/empty files
+                    sessions.append(Session(jsonl))
+            except (FileNotFoundError, OSError):
+                continue  # file deleted between glob and stat
     sessions.sort(key=lambda s: s.modified, reverse=True)
     return sessions
 
@@ -329,24 +332,22 @@ def cmd_search(args):
 
     for s in sessions:
         try:
-            with open(s.path, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read().lower()
-            if query in content:
-                # Count occurrences and find context
-                count = content.count(query)
-                s.parse()
-                contexts = []
-                for m in s.messages:
-                    if m.text and query in m.text.lower():
-                        idx = m.text.lower().index(query)
-                        start = max(0, idx - 40)
-                        end = min(len(m.text), idx + len(query) + 40)
-                        snippet = m.text[start:end].replace("\n", " ")
-                        if start > 0:
-                            snippet = "..." + snippet
-                        if end < len(m.text):
-                            snippet = snippet + "..."
-                        contexts.append((m.role, snippet))
+            s.parse()
+            contexts = []
+            count = 0
+            for m in s.messages:
+                if m.text and query in m.text.lower():
+                    count += m.text.lower().count(query)
+                    idx = m.text.lower().index(query)
+                    start = max(0, idx - 40)
+                    end = min(len(m.text), idx + len(query) + 40)
+                    snippet = m.text[start:end].replace("\n", " ")
+                    if start > 0:
+                        snippet = "..." + snippet
+                    if end < len(m.text):
+                        snippet = snippet + "..."
+                    contexts.append((m.role, snippet))
+            if count > 0:
                 results.append((s, count, contexts))
         except (IOError, OSError):
             continue
