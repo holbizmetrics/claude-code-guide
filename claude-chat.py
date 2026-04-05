@@ -427,7 +427,7 @@ def cmd_export(args):
         content = export_markdown(session)
         ext = ".md"
     elif fmt == "html":
-        content = export_html(session)
+        content = export_html(session, rich=getattr(args, "rich", False))
         ext = ".html"
     elif fmt == "txt":
         content = export_txt(session)
@@ -904,7 +904,73 @@ def export_tex(session):
     return "\n".join(lines)
 
 
-def export_html(session, embedded=False):
+def _md_table_to_html(text):
+    """Convert markdown tables to HTML tables."""
+    lines = text.split("\n")
+    result = []
+    table_lines = []
+    in_table = False
+
+    for line in lines:
+        stripped = line.strip()
+        # Detect table row: starts/ends with | and has content
+        if stripped.startswith("|") and stripped.endswith("|") and len(stripped) > 2:
+            table_lines.append(stripped)
+            in_table = True
+        else:
+            if in_table and table_lines:
+                result.append(_render_table(table_lines))
+                table_lines = []
+                in_table = False
+            result.append(line)
+
+    if table_lines:
+        result.append(_render_table(table_lines))
+
+    return "\n".join(result)
+
+
+def _render_table(lines):
+    """Render collected markdown table lines as HTML."""
+    if len(lines) < 2:
+        return "\n".join(lines)
+
+    rows = []
+    for i, line in enumerate(lines):
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        # Skip separator row (---|---|---)
+        if all(re.match(r"^:?-+:?$", c.strip()) for c in cells if c.strip()):
+            continue
+        rows.append(cells)
+
+    if not rows:
+        return "\n".join(lines)
+
+    html = '<table class="md-table">'
+    # First row is header
+    html += "<thead><tr>"
+    for cell in rows[0]:
+        html += f"<th>{cell}</th>"
+    html += "</tr></thead><tbody>"
+    for row in rows[1:]:
+        html += "<tr>"
+        for cell in row:
+            html += f"<td>{cell}</td>"
+        html += "</tr>"
+    html += "</tbody></table>"
+    return html
+
+
+def _auto_link_urls(text):
+    """Convert plain URLs to clickable links (skip already-linked ones)."""
+    return re.sub(
+        r'(?<!href=")(?<!src=")(https?://[^\s<>")\]]+)',
+        r'<a href="\1" target="_blank" rel="noopener">\1</a>',
+        text
+    )
+
+
+def export_html(session, embedded=False, rich=False):
     """Export session as HTML with dark theme."""
     messages_html = []
 
@@ -929,11 +995,26 @@ def export_html(session, embedded=False):
                 text,
                 flags=re.DOTALL
             )
+
+            if rich:
+                # Markdown tables → HTML tables (before <br> conversion)
+                text = _md_table_to_html(text)
+                # Markdown headings
+                text = re.sub(r"^(#{1,6})\s+(.+)$", lambda m: f'<h{len(m.group(1))} class="md-heading">{m.group(2)}</h{len(m.group(1))}>', text, flags=re.MULTILINE)
+                # Math: $$...$$ display math (before inline to avoid conflicts)
+                text = re.sub(r"\$\$(.+?)\$\$", r'<span class="katex-display">\1</span>', text, flags=re.DOTALL)
+                # Math: $...$ inline math (not preceded/followed by space+digit pattern that looks like prices)
+                text = re.sub(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", r'<span class="katex-inline">\1</span>', text)
+
             # Convert markdown bold/italic
             text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
             text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
             # Convert newlines to <br> (outside of pre blocks)
             text = re.sub(r"\n(?!<)", "<br>\n", text)
+
+            if rich:
+                # Auto-link URLs (after all other processing)
+                text = _auto_link_urls(text)
         else:
             text = ""
 
@@ -958,14 +1039,51 @@ def export_html(session, embedded=False):
     if embedded:
         nav = '<div class="nav"><a href="/">Back to all sessions</a></div>'
 
-    return HTML_TEMPLATE.replace("{{MESSAGES}}", "\n".join(messages_html)) \
+    rich_head = ""
+    rich_foot = ""
+    if rich:
+        rich_head = """
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<style>
+.md-table { border-collapse: collapse; margin: 10px 0; width: auto; }
+.md-table th, .md-table td {
+    border: 1px solid var(--border); padding: 6px 12px; text-align: left;
+}
+.md-table th { background: var(--code-bg); color: var(--accent); font-size: 0.85em; }
+.md-table td { font-size: 0.9em; }
+.md-table tr:hover { background: var(--surface2); }
+.md-heading { color: var(--accent); margin: 12px 0 6px 0; }
+h2.md-heading { font-size: 1.2em; }
+h3.md-heading { font-size: 1.1em; }
+h4.md-heading { font-size: 1.0em; }
+.content a { color: var(--accent); text-decoration: underline; }
+.content a:hover { color: var(--green); }
+.katex-display { display: block; text-align: center; margin: 12px 0; }
+</style>"""
+        rich_foot = """
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".katex-display").forEach(function(el) {
+        try { katex.render(el.textContent, el, {displayMode: true, throwOnError: false}); } catch(e) {}
+    });
+    document.querySelectorAll(".katex-inline").forEach(function(el) {
+        try { katex.render(el.textContent, el, {displayMode: false, throwOnError: false}); } catch(e) {}
+    });
+});
+</script>"""
+
+    result = HTML_TEMPLATE.replace("{{MESSAGES}}", "\n".join(messages_html)) \
         .replace("{{SESSION_ID}}", session.short_id) \
         .replace("{{DATE}}", session.modified.strftime("%Y-%m-%d %H:%M")) \
         .replace("{{PROJECT}}", html_mod.escape(session.project)) \
         .replace("{{MODEL}}", html_mod.escape(session.model or "unknown")) \
         .replace("{{SIZE}}", f"{session.size / 1024:.0f} KB") \
         .replace("{{MSG_COUNT}}", str(len(session.messages))) \
-        .replace("{{NAV}}", nav)
+        .replace("{{NAV}}", nav) \
+        .replace("{{RICH_HEAD}}", rich_head) \
+        .replace("{{RICH_FOOT}}", rich_foot)
+    return result
 
 
 # ─── HTML Templates ──────────────────────────────────────────────────────────
@@ -976,6 +1094,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Chat: {{SESSION_ID}}</title>
+{{RICH_HEAD}}
 <style>
 :root {
     --bg: #1a1b26; --surface: #24283b; --surface2: #414868;
@@ -1049,6 +1168,7 @@ strong { color: var(--accent); }
 </div>
 {{MESSAGES}}
 <div class="footer">Exported with claude-chat v""" + __version__ + """</div>
+{{RICH_FOOT}}
 </body>
 </html>"""
 
@@ -1198,6 +1318,7 @@ Examples:
     p.add_argument("--format", "-f", choices=["md", "html", "txt", "tex"], default="md", help="Output format")
     p.add_argument("--output", "-o", help="Output directory")
     p.add_argument("--open", action="store_true", help="Open in browser/editor after export")
+    p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
 
     # backup
     p = sub.add_parser("backup", help="Backup session files")

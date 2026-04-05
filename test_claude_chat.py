@@ -582,6 +582,125 @@ class TestExports:
         # Embedded mode should not have full <html> wrapper
         assert "Hello, how are you?" in html
 
+    def test_html_rich_has_katex(self, basic_session):
+        basic_session.parse()
+        html = cc.export_html(basic_session, rich=True)
+        assert "katex" in html
+        assert "cdn.jsdelivr.net" in html
+
+    def test_html_rich_has_table_css(self, basic_session):
+        basic_session.parse()
+        html = cc.export_html(basic_session, rich=True)
+        assert "md-table" in html
+
+    def test_html_non_rich_no_katex(self, basic_session):
+        basic_session.parse()
+        html = cc.export_html(basic_session)
+        assert "cdn.jsdelivr.net" not in html
+
+    def test_html_rich_clickable_links(self, tmp_path):
+        path = _write_jsonl(tmp_path, "links-0000-0000-0000-000000000000.jsonl", [
+            _user_line("Check https://example.com/docs for info"),
+            _assistant_line("See https://github.com/user/repo for code"),
+        ])
+        s = Session(path)
+        s.parse()
+        html = cc.export_html(s, rich=True)
+        assert 'href="https://example.com/docs"' in html
+        assert 'target="_blank"' in html
+
+    def test_html_non_rich_no_links(self, tmp_path):
+        path = _write_jsonl(tmp_path, "nolinks-0000-0000-0000-000000000000.jsonl", [
+            _user_line("Check https://example.com/docs for info"),
+        ])
+        s = Session(path)
+        s.parse()
+        html = cc.export_html(s)
+        assert 'href="https://example.com/docs"' not in html
+
+    def test_html_rich_md_table(self, tmp_path):
+        table_text = "| Name | Value |\n|------|-------|\n| foo  | 42    |\n| bar  | 99    |"
+        path = _write_jsonl(tmp_path, "table-0000-0000-0000-000000000000.jsonl", [
+            _assistant_line(table_text),
+        ])
+        s = Session(path)
+        s.parse()
+        html = cc.export_html(s, rich=True)
+        assert "<table" in html
+        assert "<th>" in html
+        assert "foo" in html
+        assert "42" in html
+
+    def test_html_rich_inline_math(self, tmp_path):
+        path = _write_jsonl(tmp_path, "math-0000-0000-0000-000000000000.jsonl", [
+            _assistant_line("The formula is $E = mc^2$ and that's it."),
+        ])
+        s = Session(path)
+        s.parse()
+        html = cc.export_html(s, rich=True)
+        assert "katex-inline" in html
+        assert "E = mc^2" in html
+
+    def test_html_rich_display_math(self, tmp_path):
+        path = _write_jsonl(tmp_path, "dispmath-0000-0000-0000-000000000000.jsonl", [
+            _assistant_line("Consider:\n$$\\int_0^1 f(x)\\,dx$$\nDone."),
+        ])
+        s = Session(path)
+        s.parse()
+        html = cc.export_html(s, rich=True)
+        assert "katex-display" in html
+
+    def test_html_rich_headings(self, tmp_path):
+        path = _write_jsonl(tmp_path, "headings-0000-0000-0000-000000000000.jsonl", [
+            _assistant_line("## Section One\nSome text\n### Subsection\nMore text"),
+        ])
+        s = Session(path)
+        s.parse()
+        html = cc.export_html(s, rich=True)
+        assert "<h2" in html
+        assert "<h3" in html
+        assert "Section One" in html
+
+
+# ─── Rich HTML Helpers ──────────────────────────────────────────────────────
+
+class TestRichHelpers:
+    def test_auto_link_urls(self):
+        result = cc._auto_link_urls("Visit https://example.com for info")
+        assert 'href="https://example.com"' in result
+        assert 'target="_blank"' in result
+
+    def test_auto_link_preserves_text(self):
+        result = cc._auto_link_urls("No links here")
+        assert result == "No links here"
+
+    def test_auto_link_multiple(self):
+        result = cc._auto_link_urls("Go to https://a.com and https://b.com")
+        assert result.count("href=") == 2
+
+    def test_md_table_to_html(self):
+        table = "| A | B |\n|---|---|\n| 1 | 2 |"
+        result = cc._md_table_to_html(table)
+        assert "<table" in result
+        assert "<th>A</th>" in result
+        assert "<td>1</td>" in result
+
+    def test_md_table_preserves_non_table(self):
+        text = "Just some text\nwith no tables"
+        result = cc._md_table_to_html(text)
+        assert result == text
+
+    def test_md_table_mixed(self):
+        text = "Before\n| X | Y |\n|---|---|\n| a | b |\nAfter"
+        result = cc._md_table_to_html(text)
+        assert "Before" in result
+        assert "After" in result
+        assert "<table" in result
+
+
+# ─── (continuing TestExports) ───────────────────────────────────────────────
+
+class TestExportsTexEscape:
     def test_tex_escapes_special_chars(self, tmp_path):
         path = _write_jsonl(tmp_path, "tex-0000-0000-0000-000000000000.jsonl", [
             _user_line("Use $100 & save 50%"),
