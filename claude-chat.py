@@ -91,6 +91,48 @@ class ToolCall:
         self.input_data = input_data or {}
         self.result = result
 
+    def summary(self):
+        """One-line summary: tool name + key parameter."""
+        d = self.input_data
+        if self.name in ("Read", "Write", "Edit"):
+            fp = d.get("file_path", "")
+            if fp:
+                return f"{self.name}: {Path(fp).name}"
+        elif self.name in ("Bash",):
+            cmd = d.get("command", "")
+            if cmd:
+                short = cmd.split("\n")[0][:80]
+                return f"Bash: {short}"
+        elif self.name in ("Grep", "Grep_search"):
+            pat = d.get("pattern", "")
+            if pat:
+                return f"Grep: {pat[:60]}"
+        elif self.name in ("Glob", "Glob_search"):
+            pat = d.get("pattern", "")
+            if pat:
+                return f"Glob: {pat[:60]}"
+        elif self.name in ("Agent",):
+            desc = d.get("description", "")
+            if desc:
+                return f"Agent: {desc[:60]}"
+        elif self.name in ("WebFetch",):
+            url = d.get("url", "")
+            if url:
+                return f"WebFetch: {url[:70]}"
+        elif self.name in ("WebSearch",):
+            q = d.get("query", "")
+            if q:
+                return f"WebSearch: {q[:60]}"
+        elif self.name in ("ToolSearch",):
+            q = d.get("query", "")
+            if q:
+                return f"ToolSearch: {q[:60]}"
+        elif self.name in ("Skill",):
+            s = d.get("skill", "")
+            if s:
+                return f"Skill: {s}"
+        return self.name
+
 
 class Session:
     """A parsed Claude Code session."""
@@ -768,7 +810,7 @@ def export_markdown(session):
                 lines.append(m.text)
             for tc in m.tool_calls:
                 input_str = json.dumps(tc.input_data, indent=2)[:500]
-                lines.append(f"\n<details><summary>Tool: {tc.name}</summary>\n")
+                lines.append(f"\n<details><summary>Tool: {tc.summary()}</summary>\n")
                 lines.append(f"```json\n{input_str}\n```")
                 lines.append(f"</details>\n")
             lines.append("")
@@ -902,7 +944,7 @@ def export_html(session, embedded=False):
                 input_preview = json.dumps(tc.input_data, indent=2)[:400]
                 tools_html += f"""
                 <details class="tool-call">
-                    <summary>{html_mod.escape(tc.name)}</summary>
+                    <summary>{html_mod.escape(tc.summary())}</summary>
                     <pre>{html_mod.escape(input_preview)}</pre>
                 </details>"""
 
