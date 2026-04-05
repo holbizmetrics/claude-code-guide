@@ -677,6 +677,7 @@
 
   <a class="section-header">Resources</a>
   <a href="#resources">Learning Resources</a>
+  <a href="tips.html">15 Things I Wish I Knew</a>
 
   <a class="section-header">Prometheus</a>
   <a href="#prometheus-analysis">Analysis &amp; Recs</a>
@@ -687,7 +688,7 @@
 <div class="title-block">
   <h1>The Complete Claude Code Guide</h1>
   <p class="subtitle">Everything you need to know &mdash; from first install to power-user mastery.<br>
-  Built from a deep-dive conversation, March 2026.</p>
+  Built from a deep-dive conversation, March 2026. New here? Start with <a href="tips.html">15 Things I Wish I Knew Earlier</a>.</p>
 </div>
 
 <!-- ==================== GETTING STARTED ==================== -->
@@ -1379,6 +1380,29 @@ claude --session-id "abc-123-..."   # Resume by exact session ID</code></pre>
 /clear                              # Wipe conversation, start fresh
 /compact                            # Compress context without clearing</code></pre>
 
+<h3>Naming sessions</h3>
+<p>Give sessions meaningful names so you can find them later:</p>
+<pre><code># When starting a session
+claude --name "auth-refactor"       # Start with a name
+
+# During a session
+/name auth-refactor                 # Name or rename the current session
+
+# Resume by name
+claude -r "auth-refactor"           # Resume a named session</code></pre>
+<p>Without a name, sessions show up as their first message &mdash; often something unhelpful like "Boot up from ." Good names save you from scrolling through dozens of anonymous sessions.</p>
+
+<h3>Coloring terminal tabs</h3>
+<p>When running multiple Claude Code sessions at once, color your terminal tabs to tell them apart:</p>
+<p><strong>Windows Terminal:</strong> Right-click a tab &rarr; <em>Color...</em> &rarr; pick a color. Use different colors for different projects or tasks (e.g., red for production, green for experiments).</p>
+<p><strong>macOS Terminal / iTerm2:</strong> In iTerm2, right-click a tab &rarr; <em>Edit Tab Title &amp; Color</em>. Combine with session naming for maximum clarity.</p>
+<p><strong>VS Code terminal:</strong> Right-click the terminal tab &rarr; <em>Change Color</em>.</p>
+
+<div class="callout tip">
+  <div class="callout-title">Pro tip: name + color</div>
+  Use <code>/name</code> to label the session inside Claude Code, and tab colors to distinguish them visually. A named, colored tab like <span style="background:#2d7d46;color:white;padding:2px 8px;border-radius:3px;font-size:0.85em">auth-refactor &mdash; MyProject</span> beats five identical "Windows PowerShell" tabs.
+</div>
+
 <h3>Session persistence</h3>
 <ul>
   <li>Sessions are saved automatically to <code>~/.claude/sessions/</code></li>
@@ -1387,6 +1411,18 @@ claude --session-id "abc-123-..."   # Resume by exact session ID</code></pre>
   <li>Session includes: conversation history, file changes, tool outputs</li>
   <li>Sessions survive across Claude Code updates</li>
 </ul>
+
+<h3>Session auto-deletion warning</h3>
+<div class="callout warning">
+  <div class="callout-title">Claude Code silently deletes sessions after 30 days</div>
+  <p>The <code>cleanupPeriodDays</code> setting in <code>~/.claude/settings.json</code> defaults to 30. After that, your sessions are gone forever. Worse: <a href="https://simonwillison.net/2025/Jun/14/claude-code-cleanup/">known bugs</a> cause upgrades to reset this value, even if you changed it.</p>
+</div>
+<p>Fix it:</p>
+<pre><code>// In ~/.claude/settings.json — add:
+{
+  "cleanupPeriodDays": 99999
+}</code></pre>
+<p>Or use <a href="https://github.com/holbizmetrics/claude-code-guide">claude-chat.py</a>'s <code>protect</code> command to set this automatically. Its <code>backup --watch</code> mode also keeps versioned copies independently of Claude Code's storage.</p>
 
 <h3>Listing past sessions</h3>
 <pre><code>claude --continue                   # Shows recent sessions to pick from
