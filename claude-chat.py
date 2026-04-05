@@ -1321,6 +1321,8 @@ _INTERACTIVE_HELP = (
     "  help                          Show this help\n"
     "  quit                          Exit\n"
     "\n"
+    "  !command                      Run a shell command (e.g. !start file.html)\n"
+    "\n"
     "  Tip: run 'protect' to stop auto-deletion (sets cleanupPeriodDays=99999)"
 )
 
@@ -1357,6 +1359,20 @@ def cmd_interactive(parser):
 
         if line in ("help", "?", "h"):
             print(_INTERACTIVE_HELP)
+            print()
+            continue
+
+        # Shell escape: !command runs in OS shell
+        if line.startswith("!"):
+            shell_cmd = line[1:].strip()
+            if shell_cmd:
+                import subprocess
+                try:
+                    subprocess.run(shell_cmd, shell=True)
+                except Exception as e:
+                    print(f"  Shell error: {e}")
+            else:
+                print("  Usage: !command (e.g. !start file.html)")
             print()
             continue
 
