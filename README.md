@@ -24,7 +24,7 @@ Your conversations contain ideas, decisions, and code you can't reconstruct. Thi
 
 ```bash
 # Just download one file. That's it.
-curl -O https://raw.githubusercontent.com/holbizmetrics/claude-code-guide/master/claude-chat.py
+curl -O https://raw.githubusercontent.com/holbizmetrics/claude-code-guide/master/tool/claude-chat.py
 
 # Or clone the whole repo
 git clone https://github.com/holbizmetrics/claude-code-guide.git

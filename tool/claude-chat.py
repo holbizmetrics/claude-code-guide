@@ -1382,6 +1382,10 @@ def cmd_interactive(parser):
             print(f"Parse error: {e}")
             continue
 
+        # "command help" → "command --help"
+        if len(tokens) == 2 and tokens[1] == "help":
+            tokens[1] = "--help"
+
         # Check first token before handing to argparse (avoids ugly error dump)
         if tokens[0] not in _VALID_COMMANDS and not tokens[0].startswith("-"):
             print(f"  Unknown command: '{tokens[0]}'")
