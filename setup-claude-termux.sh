@@ -10,8 +10,13 @@
 #   ./setup-claude-termux.sh          # Interactive setup + menu
 #   ./setup-claude-termux.sh --all    # Install everything, no questions
 #   ./setup-claude-termux.sh --status # Show what's installed
+#   ./setup-claude-termux.sh --dry-run # Simulate install (no side effects)
 #   ./setup-claude-termux.sh --help   # Show this help
 #   ./setup-claude-termux.sh --version # Show version
+#
+# Dry-run env overrides:
+#   DRY_NESTED=1        # Simulate nested-proot environment
+#   DRY_AVAIL_MB=1500   # Simulate available disk space (MB)
 #
 # What this does:
 #   1. Updates all Termux packages
@@ -20,26 +25,38 @@
 #   4. Installs Claude Code (or fixes broken install)
 #   5. Sets up Android storage access
 #   6. Configures .bashrc (proot alias, TMPDIR)
-#   7. Optional: math, science, LaTeX, GitHub CLI
+#   7. Optional: math, science, LaTeX, GitHub CLI, formal-proof checkers
 #
 # After setup, Claude Code launches automatically.
 #
 # Source: https://skool.com/early-ai-adopters
+# Proof verification paths from: https://github.com/holbizmetrics/proof-anywhere
 # ══════════════════════════════════════════════════
 
-SCRIPT_VERSION="1.1.1"
+SCRIPT_VERSION="1.2.0"
 MIN_NODE_MAJOR=18
+NANODA_DIR="$HOME/nanoda_lib"
 
 # ── Parse flags (scan all args, not just $1) ────
 MODE="interactive"
+DRY_RUN=0
 for arg in "$@"; do
     case "$arg" in
         --help|-h)    MODE="help" ;;
         --status)     MODE="status" ;;
         --all)        MODE="all" ;;
+        --dry-run)    DRY_RUN=1 ;;
         --version|-v) MODE="version" ;;
     esac
 done
+
+# --dry-run without an explicit mode → imply --all (non-interactive, full flow)
+if [ "$DRY_RUN" = "1" ] && [ "$MODE" = "interactive" ]; then
+    MODE="all"
+fi
+
+# Track would-install actions for dry-run summary
+WOULD_INSTALL=()
 
 # ── Version ─────────────────────────────────────
 if [ "$MODE" = "version" ]; then
@@ -143,7 +160,34 @@ get_claude_version() {
 
 # ── Disk space helper (returns available MB) ────
 get_available_mb() {
+    [ -n "${DRY_AVAIL_MB:-}" ] && { echo "$DRY_AVAIL_MB"; return; }
     df -m "$HOME" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+# ── Nested-proot probe ─────────────────────────
+# Tier 0 (Lean via proot-distro) fails if Termux is already under proot —
+# "Error: proot-distro should not be executed under PRoot." We detect by
+# checking for PROOT_TMP_DIR / PROOT_L2S_DIR env markers, or probing
+# proot-distro's refusal. Returns 0 if we ARE nested (Tier 0 will fail).
+check_nested_proot() {
+    [ "${DRY_NESTED:-0}" = "1" ] && return 0
+    [ "$DRY_RUN" = "1" ] && return 1
+    [ -n "${PROOT_TMP_DIR:-}${PROOT_L2S_DIR:-}" ] && return 0
+    if check_cmd proot-distro; then
+        proot-distro install ubuntu 2>&1 | grep -q "should not be executed under PRoot" && return 0
+    fi
+    return 1
+}
+
+# ── Tier 1 (nanoda_lib) detection ──────────────
+check_nanoda() {
+    [ -x "$NANODA_DIR/target/release/nanoda_bin" ]
+}
+
+# ── Tier 0 (Lean in proot-distro ubuntu) detection ─
+check_lean_in_proot() {
+    check_cmd proot-distro || return 1
+    proot-distro login ubuntu -- bash -c 'source ~/.elan/env 2>/dev/null; command -v lean >/dev/null' &>/dev/null
 }
 
 # ── Status report ───────────────────────────────
@@ -187,8 +231,20 @@ show_status() {
 
     echo ""
     echo "🔬 Formal Verification:"
-    info "Lean 4 / Coq — no ARM64/Termux builds. Proof work uses natural-language mode."
-    info "For formal verification, use Lean 4 on x86_64 Linux or Windows."
+    if check_nanoda; then
+        ok "nanoda_lib (Tier 1, check-only) installed at $NANODA_DIR"
+    else
+        info "nanoda_lib (Tier 1) not installed — native ARM64 Lean proof checker"
+    fi
+    if check_lean_in_proot; then
+        local lean_ver
+        lean_ver=$(proot-distro login ubuntu -- bash -c 'source ~/.elan/env 2>/dev/null; lean --version 2>/dev/null' 2>/dev/null | head -1)
+        ok "Lean 4 via proot-distro (Tier 0, full authoring) — ${lean_ver:-installed}"
+    elif check_nested_proot; then
+        info "Lean 4 via proot-distro (Tier 0) blocked — Termux appears nested in proot. Use Tier 1."
+    else
+        info "Lean 4 via proot-distro (Tier 0) not installed — full authoring + checking"
+    fi
 
     echo ""
     echo "⚙️  Shell Config:"
@@ -209,6 +265,7 @@ show_status() {
     (check_pkg texlive-installer || check_pkg tectonic)        && ok "LaTeX available (paper compilation)"          || info "No LaTeX — papers need external compilation"
     check_cmd git                                              && ok "Git available"                                || info "Git not installed"
     check_pkg gh                                               && ok "GitHub CLI available"                         || info "GitHub CLI not installed"
+    (check_nanoda || check_lean_in_proot)                      && ok "Formal proof checker available"               || info "No proof checker — formal verification in-context only"
 
     echo ""
     echo "🐍 Python Modules (pip):"
@@ -234,7 +291,11 @@ echo ""
 
 # Step 1: Update packages
 echo "📦 [1/7] Updating packages..."
-if pkg update -y && pkg upgrade -y; then
+if [ "$DRY_RUN" = "1" ]; then
+    echo "   [DRY] would run: pkg update -y && pkg upgrade -y"
+    WOULD_INSTALL+=("run: pkg update + pkg upgrade")
+    ok "Packages updated (dry-run)"
+elif pkg update -y && pkg upgrade -y; then
     ok "Packages updated"
 else
     fail "Package update failed. Check your network connection."
@@ -246,6 +307,12 @@ echo ""
 echo "📦 [2/7] Installing core dependencies..."
 
 for dep in nodejs python git proot; do
+    if [ "$DRY_RUN" = "1" ]; then
+        echo "   [DRY] would install $dep"
+        WOULD_INSTALL+=("pkg: $dep (core)")
+        ok "$dep installed (dry-run)"
+        continue
+    fi
     if check_pkg "$dep"; then
         ok "$dep already installed"
     else
@@ -265,7 +332,9 @@ done
 # Step 3: Validate Node.js version
 echo ""
 echo "📦 [3/7] Validating Node.js version..."
-if check_node_version; then
+if [ "$DRY_RUN" = "1" ]; then
+    ok "Node.js version check (dry-run — assuming ≥v${MIN_NODE_MAJOR})"
+elif check_node_version; then
     ok "Node.js $(node --version 2>/dev/null) meets minimum (v${MIN_NODE_MAJOR}+)"
 else
     NODE_CURRENT=$(node --version 2>/dev/null || echo "unknown")
@@ -280,7 +349,11 @@ fi
 # Step 4: Check Claude Code
 echo ""
 echo "📦 [4/7] Checking Claude Code..."
-if check_cmd claude; then
+if [ "$DRY_RUN" = "1" ]; then
+    echo "   [DRY] would run: npm install -g @anthropic-ai/claude-code"
+    WOULD_INSTALL+=("npm: @anthropic-ai/claude-code")
+    ok "Claude Code installed (dry-run)"
+elif check_cmd claude; then
     if check_claude_health; then
         ok "Claude Code working ($(get_claude_version))"
     else
@@ -296,7 +369,11 @@ fi
 # Step 5: Storage access
 echo ""
 echo "📂 [5/7] Setting up storage access..."
-if [ -d "$HOME/storage/downloads" ]; then
+if [ "$DRY_RUN" = "1" ]; then
+    echo "   [DRY] would run: termux-setup-storage (unless already configured)"
+    WOULD_INSTALL+=("run: termux-setup-storage")
+    ok "Storage access (dry-run)"
+elif [ -d "$HOME/storage/downloads" ]; then
     ok "Storage already configured"
 else
     if [ "$MODE" = "all" ]; then
@@ -326,30 +403,42 @@ fi
 # Step 6: Create tmp directory
 echo ""
 echo "📁 [6/7] Creating tmp directory..."
-mkdir -p "$HOME/tmp"
-ok "$HOME/tmp ready"
+if [ "$DRY_RUN" = "1" ]; then
+    echo "   [DRY] would create: $HOME/tmp"
+    WOULD_INSTALL+=("mkdir: \$HOME/tmp")
+    ok "$HOME/tmp ready (dry-run)"
+else
+    mkdir -p "$HOME/tmp"
+    ok "$HOME/tmp ready"
+fi
 
 # Step 7: Configure .bashrc
 echo ""
 echo "⚙️  [7/7] Configuring shell..."
-BASHRC="$HOME/.bashrc"
-touch "$BASHRC"
-CHANGED=false
+if [ "$DRY_RUN" = "1" ]; then
+    echo "   [DRY] would append Claude proot alias + TMPDIR export to \$HOME/.bashrc"
+    WOULD_INSTALL+=("edit: ~/.bashrc (proot alias, TMPDIR)")
+    ok ".bashrc would be configured (dry-run)"
+else
+    BASHRC="$HOME/.bashrc"
+    touch "$BASHRC"
+    CHANGED=false
 
-if ! check_bashrc "proot -b /data/data/com.termux/files/usr/tmp:/tmp claude"; then
-    echo "" >> "$BASHRC"
-    echo "# Claude Code setup" >> "$BASHRC"
-    echo "alias claude='proot -b /data/data/com.termux/files/usr/tmp:/tmp claude'" >> "$BASHRC"
-    CHANGED=true
+    if ! check_bashrc "proot -b /data/data/com.termux/files/usr/tmp:/tmp claude"; then
+        echo "" >> "$BASHRC"
+        echo "# Claude Code setup" >> "$BASHRC"
+        echo "alias claude='proot -b /data/data/com.termux/files/usr/tmp:/tmp claude'" >> "$BASHRC"
+        CHANGED=true
+    fi
+
+    if ! check_bashrc "export TMPDIR"; then
+        echo "export TMPDIR=\$HOME/tmp" >> "$BASHRC"
+        echo "mkdir -p \$TMPDIR 2>/dev/null" >> "$BASHRC"
+        CHANGED=true
+    fi
+
+    [ "$CHANGED" = true ] && ok "Added Claude Code config to .bashrc" || ok ".bashrc already configured"
 fi
-
-if ! check_bashrc "export TMPDIR"; then
-    echo "export TMPDIR=\$HOME/tmp" >> "$BASHRC"
-    echo "mkdir -p \$TMPDIR 2>/dev/null" >> "$BASHRC"
-    CHANGED=true
-fi
-
-[ "$CHANGED" = true ] && ok "Added Claude Code config to .bashrc" || ok ".bashrc already configured"
 
 export TMPDIR="$HOME/tmp"
 
@@ -372,12 +461,22 @@ if [ -n "$AVAILABLE_MB" ]; then
 fi
 
 if [ "$MODE" = "all" ]; then
+    # Core menu (items 1-10)
     if [ -n "$AVAILABLE_MB" ] && [ "$AVAILABLE_MB" -lt 2000 ]; then
         warn "Less than 2GB free — skipping TexLive to avoid filling disk."
         info "Consider Tectonic (lighter alternative) once space is freed."
         SELECTIONS="1 2 3 4 5 6 8 9 10"
     else
         SELECTIONS="1 2 3 4 5 6 7 8 9 10"
+    fi
+    # Proof checkers (items 11-12) — Tier 1 always; Tier 0 only if not nested-proot
+    SELECTIONS="$SELECTIONS 11"
+    if check_nested_proot; then
+        warn "Nested-proot detected — skipping Lean 4 (Tier 0). nanoda_lib (Tier 1) will be installed."
+    elif [ -n "$AVAILABLE_MB" ] && [ "$AVAILABLE_MB" -lt 3000 ]; then
+        warn "Less than 3GB free — skipping Lean 4 (Tier 0, ~3GB needed). Tier 1 still applies."
+    else
+        SELECTIONS="$SELECTIONS 12"
     fi
 else
     echo "📐 Optional packages:"
@@ -393,7 +492,17 @@ else
     check_pkg gh                && echo "    9) GitHub CLI       ✅ installed" || echo "    9) GitHub CLI       — gh auth, PRs, issues"
     check_pkg poppler           && echo "   10) Poppler          ✅ installed" || echo "   10) Poppler          — PDF tools"
     echo ""
-    echo "   Enter numbers (e.g. 1 3 9), 'all', or Enter to skip:"
+    echo "   🔬 Formal proof verification (from proof-anywhere):"
+    check_nanoda                && echo "   11) nanoda_lib       ✅ installed" || echo "   11) nanoda_lib       — Lean 4 proof checker, native ARM64 (Tier 1)"
+    if check_lean_in_proot; then
+        echo "   12) Lean 4 (proot)  ✅ installed"
+    elif check_nested_proot; then
+        echo "   12) Lean 4 (proot)   ⚠️  nested-proot environment — Tier 0 unavailable, use Tier 1"
+    else
+        echo "   12) Lean 4 (proot)  — full authoring + checking via Ubuntu proot (~3GB, Tier 0)"
+    fi
+    echo ""
+    echo "   Enter numbers (e.g. 1 3 11), 'all', or Enter to skip:"
     read -p "   > " SELECTIONS
 fi
 
@@ -403,6 +512,11 @@ if [ -n "$SELECTIONS" ]; then
     install_pkg() {
         local pkg_name="$1"
         local display_name="$2"
+        if [ "$DRY_RUN" = "1" ]; then
+            echo "   [DRY] would install $display_name ($pkg_name)"
+            WOULD_INSTALL+=("pkg: $display_name ($pkg_name)")
+            return 0
+        fi
         if check_pkg "$pkg_name"; then
             ok "$display_name already installed"
         else
@@ -414,6 +528,11 @@ if [ -n "$SELECTIONS" ]; then
     install_pip() {
         local module="$1"
         local display_name="$2"
+        if [ "$DRY_RUN" = "1" ]; then
+            echo "   [DRY] would pip-install $display_name ($module)"
+            WOULD_INSTALL+=("pip: $display_name ($module)")
+            return 0
+        fi
         if check_pip "$module"; then
             ok "$display_name already installed"
         else
@@ -422,7 +541,83 @@ if [ -n "$SELECTIONS" ]; then
         fi
     }
 
-    [[ "$SELECTIONS" == *"all"* ]] && SELECTIONS="1 2 3 4 5 6 7 8 9 10"
+    # Tier 1: nanoda_lib — native Rust Lean 4 proof checker, ~5K LOC, ARM64-native
+    install_nanoda() {
+        if [ "$DRY_RUN" = "1" ]; then
+            echo "   [DRY] would install Rust toolchain + clone+build nanoda_lib at $NANODA_DIR"
+            WOULD_INSTALL+=("nanoda_lib (Tier 1): pkg rust, git clone, cargo build --release")
+            return 0
+        fi
+        if check_nanoda; then
+            ok "nanoda_lib already built at $NANODA_DIR"
+            return 0
+        fi
+        install_pkg rust "Rust toolchain"
+        if ! check_cmd cargo; then
+            warn "cargo unavailable — cannot build nanoda_lib"
+            return 1
+        fi
+        if [ ! -d "$NANODA_DIR/.git" ]; then
+            echo "   📦 Cloning nanoda_lib..."
+            git clone --depth 1 https://github.com/ammkrn/nanoda_lib.git "$NANODA_DIR" \
+                || { warn "nanoda_lib clone failed"; return 1; }
+        fi
+        echo "   📦 Building nanoda_lib (release) — this takes a few minutes on-device..."
+        (cd "$NANODA_DIR" && cargo build --release) \
+            && ok "nanoda_lib built — $NANODA_DIR/target/release/nanoda_bin" \
+            || { warn "nanoda_lib build failed"; return 1; }
+    }
+
+    # Tier 0: Lean 4 via proot-distro + elan. Requires non-nested Termux.
+    install_lean_proot() {
+        if check_nested_proot; then
+            warn "Nested-proot detected — Tier 0 (Lean via proot-distro) is not available."
+            info "Use Tier 1 (nanoda_lib, option 11) for proof checking on this device."
+            return 1
+        fi
+        if [ "$DRY_RUN" = "1" ]; then
+            echo "   [DRY] would install proot-distro + Ubuntu + elan + Lean 4 (~3GB)"
+            WOULD_INSTALL+=("Lean 4 (Tier 0): proot-distro, Ubuntu, elan, lean stable")
+            return 0
+        fi
+        install_pkg proot-distro "proot-distro"
+        if ! check_cmd proot-distro; then
+            warn "proot-distro missing — aborting Lean install"
+            return 1
+        fi
+        if ! (proot-distro list --installed 2>/dev/null | grep -q '^ubuntu' \
+              || proot-distro list 2>/dev/null | grep -A1 '^ubuntu' | grep -q -i 'installed: *true'); then
+            local avail_kb
+            avail_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+            if [ -n "${avail_kb:-}" ] && [ "$avail_kb" -lt 3145728 ]; then
+                warn "Low space: $((avail_kb/1024)) MB free, ~3GB recommended for Ubuntu + Lean."
+                if [ "$MODE" != "all" ]; then
+                    read -p "   Continue anyway? (y/n) " yn
+                    [ "$yn" = "y" ] || [ "$yn" = "Y" ] || { info "Skipped."; return 1; }
+                else
+                    warn "Skipping in --all mode."
+                    return 1
+                fi
+            fi
+            echo "   📦 Installing Ubuntu in proot-distro (~600MB download)..."
+            proot-distro install ubuntu || { warn "Ubuntu install failed"; return 1; }
+        fi
+        echo "   📦 Installing elan + Lean 4 inside Ubuntu proot..."
+        proot-distro login ubuntu -- bash -c '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y >/dev/null
+            apt-get install -y --no-install-recommends curl ca-certificates git >/dev/null
+            if [ ! -d "$HOME/.elan" ]; then
+                curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+                    | sh -s -- -y --default-toolchain stable
+            fi
+            source "$HOME/.elan/env"
+            lean --version
+        ' && ok "Lean 4 installed in Ubuntu proot (run: proot-distro login ubuntu)" \
+          || { warn "Lean install inside proot failed"; return 1; }
+    }
+
+    [[ "$SELECTIONS" == *"all"* ]] && SELECTIONS="1 2 3 4 5 6 7 8 9 10 11 12"
 
     for sel in $SELECTIONS; do
         case $sel in
@@ -469,6 +664,8 @@ if [ -n "$SELECTIONS" ]; then
                 fi
                 ;;
             10) install_pkg poppler "Poppler (PDF tools)" ;;
+            11) install_nanoda ;;
+            12) install_lean_proot ;;
         esac
     done
 fi
@@ -476,6 +673,20 @@ fi
 # ── Launch ──────────────────────────────────────
 echo ""
 echo "================================"
+
+if [ "$DRY_RUN" = "1" ]; then
+    echo "✅ Dry-run complete — no side effects."
+    echo ""
+    echo "📋 Would have performed ${#WOULD_INSTALL[@]} action(s):"
+    for action in "${WOULD_INSTALL[@]}"; do
+        echo "   • $action"
+    done
+    echo ""
+    echo "🔀 Effective flags: MODE=$MODE, DRY_RUN=$DRY_RUN${DRY_NESTED:+, DRY_NESTED=$DRY_NESTED}${DRY_AVAIL_MB:+, DRY_AVAIL_MB=$DRY_AVAIL_MB}"
+    echo ""
+    exit 0
+fi
+
 echo "✅ Setup complete!"
 echo ""
 echo "📂 Use ~/storage/downloads to share files with Android apps."
