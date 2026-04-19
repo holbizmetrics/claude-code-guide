@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run tests before releasing
+        working-directory: tool
+        run: python -m pytest test_claude_chat.py -v
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches claude-chat.py __version__
+        working-directory: tool
+        run: |
+          TAG="${{ steps.version.outputs.version }}"
+          FILE_VER=$(python -c "import re,sys; m=re.search(r'__version__\s*=\s*[\"\\'](.*?)[\"\\']', open('claude-chat.py').read()); print('v'+m.group(1)) if m else sys.exit('no __version__ in claude-chat.py')")
+          if [ "$TAG" != "$FILE_VER" ]; then
+            echo "Tag $TAG does not match __version__ $FILE_VER in claude-chat.py"
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: claude-chat ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            tool/claude-chat.py

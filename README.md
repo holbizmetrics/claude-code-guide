@@ -34,6 +34,74 @@ Requirements: Python 3.7+. No pip install. No dependencies.
 
 > **Note:** On Windows, use `python` instead of `python3`.
 
+## Quickstart — 10 things worth knowing
+
+Recipe book. Each tip = what to type, what you get, why it matters.
+
+**1. First run: stop the 30-day auto-delete.**
+```
+python3 claude-chat.py protect
+```
+Sets `cleanupPeriodDays: 99999`. One-shot. Do this before anything else.
+
+**2. See what you've been working on.**
+```
+python3 claude-chat.py
+list
+```
+Enters the REPL, lists recent sessions with `[N]` numbered refs. Every session gets a short-hash and a summary line.
+
+**3. Open any session in your browser — dark theme.**
+```
+export 1 --format html --open
+```
+In the REPL, after `list`. `1` is the index from the list; you don't have to copy a hash. Works on a fresh REPL too (auto-populates).
+
+**4. Turn on math, tables, and links.**
+```
+export 1 --format html --rich --open
+```
+`--rich` pulls in KaTeX for `$...$` math, renders markdown tables as real HTML tables, and makes URLs clickable. Great for research-heavy sessions.
+
+**5. See what a session *actually did*.**
+```
+export 1 --format html --rich --diagrams --open
+```
+`--diagrams` embeds a mermaid sequence diagram of every tool call (Claude → Read → Bash → Edit …). Zoom, pan, and fullscreen buttons for long sessions. This is the single biggest "oh wow" feature.
+
+**6. Find something across *all* your chats.**
+```
+python3 claude-chat.py search "sobolev spaces"
+python3 claude-chat.py search "auth bug" --project myapp
+```
+Full-text search, shows matching snippets with context. Your personal knowledge base you didn't know you had.
+
+**7. Pull out just the code.**
+```
+extract 1 --code
+```
+Every code block from the session. Good when you lost a snippet and don't want to re-read 200 messages to find it.
+
+**8. Pull out just your own messages.**
+```
+extract 1 --ideas
+```
+Every user message, chronologically. Works like a journal of what you were thinking.
+
+**9. Browse visually when you don't know which session you want.**
+```
+python3 claude-chat.py serve
+```
+Opens a local web UI at `http://127.0.0.1:3456`. Click around sessions, search, read. Localhost only — don't expose it.
+
+**10. Continuous backup in the background.**
+```
+python3 claude-chat.py backup --watch
+```
+Runs as a separate process, polls for changes, keeps the last 5 versions of each session. Zero token cost. Survives Claude Code crashes.
+
+**Bonus — in the REPL:** prefix any line with `!` to run a shell command without leaving. `!start file.html` on Windows, `!open file.html` on macOS, `!xdg-open file.html` on Linux.
+
 ## Commands
 
 ### Interactive mode
