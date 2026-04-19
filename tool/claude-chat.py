@@ -358,6 +358,72 @@ def _session_preview(session, max_msgs=4):
     return previews
 
 
+# ─── Interactive Session Index ──────────────────────────────────────────────
+#
+# When `list` runs inside the REPL, we remember the displayed sessions in
+# order. Subsequent commands like `export 1`, `open 3`, `extract 2 --code`
+# can then use the number instead of the hash. CLI (non-REPL) behavior is
+# unchanged.
+
+_interactive_index = []  # type: list  # Session objects in display order
+
+# Commands where a bare integer is a session reference (positional session_id).
+# Commands not in this set (list, search, backup, stats, serve, protect) can have
+# numeric flag values like `--limit 5`, `--interval 3` — those must never be
+# rewritten, so we gate substitution by command.
+_ID_COMMANDS = frozenset({"export", "extract", "open"})
+
+
+def _substitute_numbered_refs(tokens, index=None, autopopulate=True):
+    """Replace the first positional integer after an ID command with a session short_id.
+
+    Only acts on commands in _ID_COMMANDS (those that take session_id as a positional).
+    Only the FIRST non-flag integer token is rewritten — so `open 1 --port 3456`
+    correctly leaves `3456` alone even when the index has ≥3456 entries.
+
+    If `autopopulate=True` (default) and the index is empty but tokens suggest
+    a numbered ref (small int 1..99), the module-level `_interactive_index` is
+    filled from `find_all_sessions()[:20]` — matching what `list` does by
+    default. This lets `export 1` work without requiring a prior `list`.
+
+    Tests pass `index=[...]` directly, bypassing autopopulation.
+
+    Returns the (possibly rewritten) token list. REPL inspects before/after
+    to print a resolution trace.
+    """
+    use_module_index = index is None
+    if use_module_index:
+        index = _interactive_index
+    if not tokens or tokens[0] not in _ID_COMMANDS:
+        return list(tokens)
+
+    if not index and autopopulate and use_module_index:
+        needs_pop = any(
+            t and t[0] != "-" and t.isdigit() and 1 <= int(t) <= 99
+            for t in tokens[1:]
+        )
+        if needs_pop:
+            sessions = find_all_sessions()[:20]
+            _interactive_index.clear()
+            _interactive_index.extend(sessions)
+            index = _interactive_index
+
+    if not index:
+        return list(tokens)
+
+    out = [tokens[0]]
+    substituted = False
+    for t in tokens[1:]:
+        if not substituted and t and t[0] != "-" and t.isdigit():
+            n = int(t)
+            if 1 <= n <= len(index):
+                out.append(index[n - 1].short_id)
+                substituted = True
+                continue
+        out.append(t)
+    return out
+
+
 def cmd_list(args):
     """List all sessions with summaries."""
     sessions = find_all_sessions(args.project)
@@ -367,9 +433,15 @@ def cmd_list(args):
 
     limit = args.limit or 20
     detail = getattr(args, "detail", False)
+    interactive = getattr(args, "_interactive", False)
     current_project = None
 
-    for s in sessions[:limit]:
+    shown = sessions[:limit]
+    if interactive:
+        _interactive_index.clear()
+        _interactive_index.extend(shown)
+
+    for i, s in enumerate(shown, start=1):
         if s.project != current_project:
             current_project = s.project
             print(f"\n  {current_project}")
@@ -385,7 +457,8 @@ def cmd_list(args):
 
         size_kb = s.size / 1024
         summary = s.summary(80)
-        print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {size_kb:6.0f}KB  {age_str:>8}  {summary}")
+        num = f"[{i:>3}] " if interactive else ""
+        print(f"  {num}{s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {size_kb:6.0f}KB  {age_str:>8}  {summary}")
 
         if detail:
             previews = _session_preview(s)
@@ -398,6 +471,8 @@ def cmd_list(args):
     if total > limit:
         print(f"\n  ... and {total - limit} more. Use --limit {total} to see all.")
     print(f"\n  Total: {total} sessions across {len(set(s.project for s in sessions))} project(s)")
+    if interactive:
+        print(f"  Tip: use the number, e.g. `export 1 --format html` or `open 2`")
 
 
 def cmd_search(args):
@@ -461,7 +536,11 @@ def cmd_export(args):
         content = export_markdown(session)
         ext = ".md"
     elif fmt == "html":
-        content = export_html(session, rich=getattr(args, "rich", False))
+        content = export_html(
+            session,
+            rich=getattr(args, "rich", False),
+            diagrams=getattr(args, "diagrams", False),
+        )
         ext = ".html"
     elif fmt == "txt":
         content = export_txt(session)
@@ -1004,7 +1083,54 @@ def _auto_link_urls(text):
     )
 
 
-def export_html(session, embedded=False, rich=False):
+def _build_sequence_diagram(session):
+    """Build a mermaid sequenceDiagram from session tool calls.
+
+    Participants: Claude + one per distinct tool name (in first-seen order).
+    Events: one arrow per tool call in conversation order.
+    Returns "" if the session has no tool calls.
+    """
+    tool_names = []
+    seen = set()
+    events = []
+    for m in session.messages:
+        if m.role != "assistant" or not m.tool_calls:
+            continue
+        for tc in m.tool_calls:
+            name = (tc.name or "Tool").strip()
+            if name not in seen:
+                seen.add(name)
+                tool_names.append(name)
+            summary = tc.summary() or name
+            s = summary
+            if s.startswith(name + ":"):
+                s = s[len(name) + 1:].strip()
+            elif s.startswith(name):
+                s = s[len(name):].lstrip(" :-")
+            s = s.replace("\r", " ").replace("\n", " ")
+            if len(s) > 60:
+                s = s[:57] + "..."
+            s = s.replace(";", ",").replace("#", "&#35;")
+            s = s.replace("<", "&lt;").replace(">", "&gt;")
+            if not s:
+                s = name
+            events.append((name, s))
+    if not events:
+        return ""
+
+    def pid(n):
+        safe = re.sub(r"\W+", "_", n).strip("_")
+        return safe or "T"
+
+    lines = ["sequenceDiagram", "    participant C as Claude"]
+    for n in tool_names:
+        lines.append(f'    participant {pid(n)} as {n}')
+    for name, s in events:
+        lines.append(f"    C->>{pid(name)}: {s}")
+    return "\n".join(lines)
+
+
+def export_html(session, embedded=False, rich=False, diagrams=False):
     """Export session as HTML with dark theme."""
     messages_html = []
 
@@ -1107,6 +1233,116 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>"""
 
+    diagrams_head = ""
+    diagrams_foot = ""
+    diagram_block = ""
+    if diagrams:
+        seq = _build_sequence_diagram(session)
+        if seq:
+            diagram_block = (
+                '<details class="diagram-block" open>'
+                '<summary>Tool-call sequence</summary>'
+                '<div class="diagram-stage">'
+                '<div class="diagram-controls">'
+                '<button type="button" data-zoom="in" title="Zoom in">+</button>'
+                '<button type="button" data-zoom="out" title="Zoom out">\u2212</button>'
+                '<button type="button" data-zoom="reset" title="Reset view">Reset</button>'
+                '<button type="button" data-zoom="full" title="Toggle fullscreen (Esc to exit)">\u26F6 Full</button>'
+                '<span class="diagram-hint">drag to pan &middot; scroll / pinch to zoom</span>'
+                '</div>'
+                '<div class="diagram-viewport">'
+                '<pre class="mermaid">\n' + seq + '\n</pre>'
+                '</div>'
+                '</div>'
+                '</details>'
+            )
+        diagrams_head = """
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<style>
+.diagram-block {
+    margin: 15px 0 20px 0; padding: 12px 15px; background: var(--surface);
+    border-radius: 8px; border-left: 3px solid var(--yellow);
+}
+.diagram-block > summary {
+    cursor: pointer; color: var(--yellow); font-weight: bold;
+    font-size: 0.9em; letter-spacing: 0.3px;
+}
+.diagram-controls {
+    display: flex; gap: 6px; align-items: center; margin: 10px 0 6px 0;
+}
+.diagram-controls button {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 10px; font: inherit; font-size: 0.85em;
+    cursor: pointer; min-width: 32px;
+}
+.diagram-controls button:hover { background: var(--border); }
+.diagram-hint {
+    color: var(--text-dim); font-size: 0.75em; margin-left: 6px;
+}
+.diagram-stage {
+    display: flex; flex-direction: column;
+}
+.diagram-stage:fullscreen {
+    background: var(--bg); width: 100vw; height: 100vh; padding: 10px;
+}
+.diagram-stage:fullscreen .diagram-viewport {
+    flex: 1; height: auto;
+}
+.diagram-viewport {
+    background: transparent; border: 1px solid var(--border); border-radius: 4px;
+    height: 70vh; overflow: hidden; touch-action: none;
+}
+.diagram-viewport .mermaid {
+    background: transparent; border: none; padding: 0; margin: 0;
+    width: 100%; height: 100%; font-family: inherit;
+}
+.diagram-viewport .mermaid svg {
+    width: 100% !important; height: 100% !important; max-width: none !important;
+    display: block;
+}
+</style>"""
+        diagrams_foot = """
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    if (!window.mermaid) return;
+    try {
+        mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
+    } catch(e) { return; }
+    mermaid.run().then(function() {
+        document.querySelectorAll(".diagram-block").forEach(function(block) {
+            var svg = block.querySelector(".diagram-viewport svg");
+            if (!svg || !window.svgPanZoom) return;
+            svg.removeAttribute("style");
+            svg.setAttribute("width", "100%");
+            svg.setAttribute("height", "100%");
+            var pz = svgPanZoom(svg, {
+                zoomEnabled: true, controlIconsEnabled: false, fit: true, center: true,
+                minZoom: 0.2, maxZoom: 20, zoomScaleSensitivity: 0.4
+            });
+            var stage = block.querySelector(".diagram-stage");
+            block.querySelectorAll(".diagram-controls button").forEach(function(btn) {
+                btn.addEventListener("click", function() {
+                    var k = btn.getAttribute("data-zoom");
+                    if (k === "in") pz.zoomIn();
+                    else if (k === "out") pz.zoomOut();
+                    else if (k === "reset") { pz.resetZoom(); pz.center(); pz.fit(); }
+                    else if (k === "full") {
+                        if (document.fullscreenElement) document.exitFullscreen();
+                        else if (stage && stage.requestFullscreen) stage.requestFullscreen();
+                    }
+                });
+            });
+            document.addEventListener("fullscreenchange", function() {
+                setTimeout(function() {
+                    try { pz.resize(); pz.fit(); pz.center(); } catch(e) {}
+                }, 50);
+            });
+        });
+    }).catch(function() {});
+});
+</script>"""
+
     result = HTML_TEMPLATE.replace("{{MESSAGES}}", "\n".join(messages_html)) \
         .replace("{{SESSION_ID}}", session.short_id) \
         .replace("{{DATE}}", session.modified.strftime("%Y-%m-%d %H:%M")) \
@@ -1116,7 +1352,10 @@ document.addEventListener("DOMContentLoaded", function() {
         .replace("{{MSG_COUNT}}", str(len(session.messages))) \
         .replace("{{NAV}}", nav) \
         .replace("{{RICH_HEAD}}", rich_head) \
-        .replace("{{RICH_FOOT}}", rich_foot)
+        .replace("{{RICH_FOOT}}", rich_foot) \
+        .replace("{{DIAGRAMS_HEAD}}", diagrams_head) \
+        .replace("{{DIAGRAM_BLOCK}}", diagram_block) \
+        .replace("{{DIAGRAMS_FOOT}}", diagrams_foot)
     return result
 
 
@@ -1129,6 +1368,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Chat: {{SESSION_ID}}</title>
 {{RICH_HEAD}}
+{{DIAGRAMS_HEAD}}
 <style>
 :root {
     --bg: #1a1b26; --surface: #24283b; --surface2: #414868;
@@ -1200,9 +1440,11 @@ strong { color: var(--accent); }
         <span>{{MSG_COUNT}} messages</span>
     </div>
 </div>
+{{DIAGRAM_BLOCK}}
 {{MESSAGES}}
 <div class="footer">Exported with claude-chat v""" + __version__ + """</div>
 {{RICH_FOOT}}
+{{DIAGRAMS_FOOT}}
 </body>
 </html>"""
 
@@ -1310,12 +1552,13 @@ tr:hover { background: var(--hover); }
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 _INTERACTIVE_HELP = (
-    "  list                          Show recent sessions\n"
+    "  list                          Show recent sessions (numbered)\n"
     "  list --detail                 Show with topic previews\n"
     "  list --project crystal        Filter by project\n"
     "  search \"react hooks\"          Search across all chats\n"
     "  export SESSION --format html  Export session (md/html/txt/tex)\n"
     "  export SESSION --format html --rich   Rich HTML (math, tables, links)\n"
+    "  export SESSION --format html --diagrams   Add mermaid tool-call diagram\n"
     "  stats                         Usage statistics\n"
     "  extract SESSION --code        Extract code blocks\n"
     "  extract SESSION --ideas       Extract your messages\n"
@@ -1324,6 +1567,9 @@ _INTERACTIVE_HELP = (
     "  protect                       Prevent auto-deletion\n"
     "  help                          Show this help\n"
     "  quit                          Exit\n"
+    "\n"
+    "  SESSION can be a hash (a7e44ed0) OR a number from the last `list` —\n"
+    "  e.g. after `list`, type `export 1` or `extract 2 --ideas`.\n"
     "\n"
     "  !command                      Run a shell command (e.g. !start file.html)\n"
     "\n"
@@ -1397,11 +1643,27 @@ def cmd_interactive(parser):
             print()
             continue
 
+        # Substitute numbered refs (e.g. `export 1` → `export a7e44ed0`).
+        # If no `list` has run yet, the substitution helper auto-populates
+        # the index from find_all_sessions()[:20].
+        orig_tokens = list(tokens)
+        tokens = _substitute_numbered_refs(tokens)
+        if tokens != orig_tokens:
+            for o, n in zip(orig_tokens, tokens):
+                if o != n and o.isdigit():
+                    sess = next((s for s in _interactive_index if s.short_id == n), None)
+                    if sess:
+                        print(f"  [resolved {o} → {n}  \"{sess.summary(60)}\"]")
+
         try:
             args = parser.parse_args(tokens)
         except SystemExit:
             # argparse calls sys.exit on --help or errors; catch it
             continue
+
+        # Mark args so cmd_list knows to print numbers + populate the index
+        if args.command in ("list", "ls"):
+            args._interactive = True
 
         if not args.command:
             print("  Type a command or 'help' to see options.")
@@ -1482,6 +1744,7 @@ Examples:
     p.add_argument("--output", "-o", help="Output directory")
     p.add_argument("--open", action="store_true", help="Open in browser/editor after export")
     p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
+    p.add_argument("--diagrams", action="store_true", help="HTML: include a mermaid sequenceDiagram of tool calls")
 
     # backup
     p = sub.add_parser("backup", help="Backup session files")

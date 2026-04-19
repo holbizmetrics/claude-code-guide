@@ -662,6 +662,81 @@ class TestExports:
         assert "Section One" in html
 
 
+# ─── Diagrams Mode ──────────────────────────────────────────────────────────
+
+class TestHtmlDiagrams:
+    def test_html_no_diagrams_by_default(self, toolcall_session):
+        toolcall_session.parse()
+        html = cc.export_html(toolcall_session)
+        assert "mermaid" not in html
+        assert "sequenceDiagram" not in html
+
+    def test_html_diagrams_has_mermaid_cdn(self, toolcall_session):
+        toolcall_session.parse()
+        html = cc.export_html(toolcall_session, diagrams=True)
+        assert "mermaid" in html
+        assert "cdn.jsdelivr.net" in html
+
+    def test_html_diagrams_emits_sequence_block(self, toolcall_session):
+        toolcall_session.parse()
+        html = cc.export_html(toolcall_session, diagrams=True)
+        assert "sequenceDiagram" in html
+        assert "participant C as Claude" in html
+        # Participants for distinct tool names
+        assert "participant Read as Read" in html
+        assert "participant Bash as Bash" in html
+        # At least one arrow from Claude to a tool
+        assert "C->>Read:" in html
+
+    def test_html_diagrams_contains_tool_args(self, toolcall_session):
+        toolcall_session.parse()
+        html = cc.export_html(toolcall_session, diagrams=True)
+        # config.yaml appears in the Read tool summary
+        assert "config.yaml" in html
+        # git status appears in Bash summary
+        assert "git status" in html
+
+    def test_html_diagrams_skipped_when_no_tool_calls(self, basic_session):
+        basic_session.parse()
+        html = cc.export_html(basic_session, diagrams=True)
+        # Mermaid CDN still loaded, but no sequenceDiagram block emitted
+        assert "sequenceDiagram" not in html
+
+    def test_html_diagrams_has_zoom_controls(self, toolcall_session):
+        toolcall_session.parse()
+        html = cc.export_html(toolcall_session, diagrams=True)
+        # svg-pan-zoom CDN and zoom-control buttons present
+        assert "svg-pan-zoom" in html
+        assert 'data-zoom="in"' in html
+        assert 'data-zoom="out"' in html
+        assert 'data-zoom="reset"' in html
+        assert "diagram-viewport" in html
+
+    def test_html_diagrams_additive_with_rich(self, toolcall_session):
+        toolcall_session.parse()
+        html = cc.export_html(toolcall_session, rich=True, diagrams=True)
+        # Both features present, nothing overwritten
+        assert "katex" in html
+        assert "mermaid" in html
+        assert "sequenceDiagram" in html
+
+    def test_build_sequence_diagram_empty_session(self, basic_session):
+        basic_session.parse()
+        assert cc._build_sequence_diagram(basic_session) == ""
+
+    def test_build_sequence_diagram_sanitizes_participant_id(self, tmp_path):
+        # A hypothetical tool name with a dot/hyphen would need a safe participant id
+        path = _write_jsonl(tmp_path, "diag9999-0000-0000-0000-000000000000.jsonl", [
+            _user_line("Go"),
+            _assistant_tool_line("weird.tool-name", {"x": 1}),
+        ])
+        s = Session(path)
+        s.parse()
+        seq = cc._build_sequence_diagram(s)
+        # participant id has underscores, alias keeps original
+        assert "participant weird_tool_name as weird.tool-name" in seq
+
+
 # ─── Rich HTML Helpers ──────────────────────────────────────────────────────
 
 class TestRichHelpers:
@@ -714,3 +789,180 @@ class TestExportsTexEscape:
         assert r"\%" in tex
         # No double-escaping
         assert r"\textbackslash{}\$" not in tex
+
+
+# ─── Numbered REPL References ───────────────────────────────────────────────
+
+class TestNumberedRefs:
+    def _mk(self, tmp_path, short_id_prefix):
+        path = _write_jsonl(tmp_path, f"{short_id_prefix}-0000-0000-0000-000000000000.jsonl", [
+            _user_line("Hi"),
+            _assistant_line("Hello"),
+        ])
+        return Session(path)
+
+    def test_empty_cache_returns_unchanged(self):
+        assert cc._substitute_numbered_refs(["export", "1", "--rich"], index=[]) == ["export", "1", "--rich"]
+
+    def test_substitutes_bare_integer(self, tmp_path):
+        s1 = self._mk(tmp_path, "aaaa1111")
+        s2 = self._mk(tmp_path, "bbbb2222")
+        idx = [s1, s2]
+        out = cc._substitute_numbered_refs(["export", "2", "--format", "html"], index=idx)
+        assert out == ["export", "bbbb2222", "--format", "html"]
+
+    def test_leaves_flags_alone(self, tmp_path):
+        s1 = self._mk(tmp_path, "aaaa1111")
+        out = cc._substitute_numbered_refs(["export", "-o", "/tmp"], index=[s1])
+        assert out == ["export", "-o", "/tmp"]
+
+    def test_leaves_non_integer_tokens(self, tmp_path):
+        s1 = self._mk(tmp_path, "aaaa1111")
+        out = cc._substitute_numbered_refs(["export", "some-hash-like-token"], index=[s1])
+        assert out == ["export", "some-hash-like-token"]
+
+    def test_out_of_range_returns_unchanged(self, tmp_path):
+        s1 = self._mk(tmp_path, "aaaa1111")
+        out = cc._substitute_numbered_refs(["export", "7"], index=[s1])
+        assert out == ["export", "7"]
+
+    def test_zero_is_not_substituted(self, tmp_path):
+        s1 = self._mk(tmp_path, "aaaa1111")
+        out = cc._substitute_numbered_refs(["export", "0"], index=[s1])
+        assert out == ["export", "0"]
+
+    def test_search_never_substituted(self, tmp_path):
+        # Commands outside _ID_COMMANDS must pass through — `search` is one.
+        s1 = self._mk(tmp_path, "aaaa1111")
+        out = cc._substitute_numbered_refs(["search", "1"], index=[s1])
+        assert out == ["search", "1"]
+
+    def test_list_limit_not_mangled(self, tmp_path):
+        # Regression: `list --limit 3` after index populated MUST NOT rewrite 3.
+        # argparse expects int on --limit; substituting a hash would crash it.
+        s1 = self._mk(tmp_path, "aaaa1111")
+        s2 = self._mk(tmp_path, "bbbb2222")
+        s3 = self._mk(tmp_path, "cccc3333")
+        out = cc._substitute_numbered_refs(["list", "--limit", "2"], index=[s1, s2, s3])
+        assert out == ["list", "--limit", "2"]
+
+    def test_backup_interval_not_mangled(self, tmp_path):
+        s1 = self._mk(tmp_path, "aaaa1111")
+        out = cc._substitute_numbered_refs(["backup", "--interval", "1"], index=[s1])
+        assert out == ["backup", "--interval", "1"]
+
+    def test_only_first_positional_substituted(self, tmp_path):
+        # For ID commands with numeric flag values (e.g. future `open 1 --port 3456`)
+        # only the first positional integer is rewritten.
+        sessions = [self._mk(tmp_path, f"{i:04d}1111") for i in range(5)]
+        out = cc._substitute_numbered_refs(["open", "1", "--port", "3"], index=sessions)
+        # "1" → first session hash; "3" left alone even though index[2] exists
+        assert out[0] == "open"
+        assert out[1] == sessions[0].short_id
+        assert out[2] == "--port"
+        assert out[3] == "3"
+
+    def test_extract_single_positional_substituted(self, tmp_path):
+        s1 = self._mk(tmp_path, "aaaa1111")
+        s2 = self._mk(tmp_path, "bbbb2222")
+        out = cc._substitute_numbered_refs(["extract", "1", "--code"], index=[s1, s2])
+        assert out == ["extract", "aaaa1111", "--code"]
+
+    def test_autopopulate_fires_when_index_empty(self, tmp_path, monkeypatch):
+        """Mode B: `export 2` on fresh REPL should auto-populate and resolve."""
+        s1 = self._mk(tmp_path, "aaaa1111")
+        s2 = self._mk(tmp_path, "bbbb2222")
+        s3 = self._mk(tmp_path, "cccc3333")
+        cc._interactive_index.clear()
+        monkeypatch.setattr(cc, "find_all_sessions", lambda project=None: [s1, s2, s3])
+
+        # index=None → use module-level; autopopulate=True is default
+        out = cc._substitute_numbered_refs(["export", "2", "--format", "html"])
+        assert out == ["export", "bbbb2222", "--format", "html"]
+        # Module cache was filled
+        assert len(cc._interactive_index) == 3
+        cc._interactive_index.clear()
+
+    def test_autopopulate_skipped_if_no_numbered_ref(self, tmp_path, monkeypatch):
+        cc._interactive_index.clear()
+        called = {"n": 0}
+
+        def fake_find(project=None):
+            called["n"] += 1
+            return []
+        monkeypatch.setattr(cc, "find_all_sessions", fake_find)
+
+        # No integer tokens → must NOT call find_all_sessions
+        cc._substitute_numbered_refs(["export", "a7e44ed0", "--format", "html"])
+        assert called["n"] == 0
+
+    def test_autopopulate_skipped_if_command_not_id(self, tmp_path, monkeypatch):
+        cc._interactive_index.clear()
+        called = {"n": 0}
+
+        def fake_find(project=None):
+            called["n"] += 1
+            return []
+        monkeypatch.setattr(cc, "find_all_sessions", fake_find)
+
+        cc._substitute_numbered_refs(["list", "--limit", "5"])
+        assert called["n"] == 0
+
+    def test_autopopulate_disabled_flag(self, tmp_path, monkeypatch):
+        """Explicit autopopulate=False disables the lookup entirely."""
+        cc._interactive_index.clear()
+        called = {"n": 0}
+
+        def fake_find(project=None):
+            called["n"] += 1
+            return []
+        monkeypatch.setattr(cc, "find_all_sessions", fake_find)
+
+        out = cc._substitute_numbered_refs(["export", "2"], autopopulate=False)
+        assert out == ["export", "2"]
+        assert called["n"] == 0
+
+    def test_autopopulate_out_of_range_passes_through(self, tmp_path, monkeypatch):
+        s1 = self._mk(tmp_path, "aaaa1111")
+        cc._interactive_index.clear()
+        monkeypatch.setattr(cc, "find_all_sessions", lambda project=None: [s1])
+
+        # 50 > 1 → autopopulate fills cache with 1 entry, no substitution
+        out = cc._substitute_numbered_refs(["export", "50"])
+        assert out == ["export", "50"]
+        assert len(cc._interactive_index) == 1
+        cc._interactive_index.clear()
+
+    def test_cmd_list_interactive_populates_index(self, tmp_path, monkeypatch, capsys):
+        s1 = self._mk(tmp_path, "cccc3333")
+        s2 = self._mk(tmp_path, "dddd4444")
+        monkeypatch.setattr(cc, "find_all_sessions", lambda project=None: [s1, s2])
+        cc._interactive_index.clear()
+
+        class A:
+            project = None
+            limit = 20
+            detail = False
+            _interactive = True
+        cc.cmd_list(A())
+        captured = capsys.readouterr().out
+        assert "[  1]" in captured
+        assert "[  2]" in captured
+        assert len(cc._interactive_index) == 2
+        assert cc._interactive_index[0].short_id == "cccc3333"
+        cc._interactive_index.clear()
+
+    def test_cmd_list_non_interactive_no_numbers(self, tmp_path, monkeypatch, capsys):
+        s1 = self._mk(tmp_path, "eeee5555")
+        monkeypatch.setattr(cc, "find_all_sessions", lambda project=None: [s1])
+        cc._interactive_index.clear()
+
+        class A:
+            project = None
+            limit = 20
+            detail = False
+        cc.cmd_list(A())
+        captured = capsys.readouterr().out
+        assert "[  1]" not in captured
+        # CLI mode does NOT populate the cache
+        assert cc._interactive_index == []
