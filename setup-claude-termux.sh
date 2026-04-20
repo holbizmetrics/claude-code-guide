@@ -33,14 +33,15 @@
 # Proof verification paths from: https://github.com/holbizmetrics/proof-anywhere
 # ══════════════════════════════════════════════════
 
-SCRIPT_VERSION="1.2.1"
+SCRIPT_VERSION="1.2.2"
 MIN_NODE_MAJOR=18
 NANODA_DIR="$HOME/nanoda_lib"
 
-# Claude Code has no android-arm64 native binary. We run it (and its npm
-# install, so the postinstall sees linux-arm64 and downloads the right
-# native binary) under the same proot bindings the .bashrc alias uses.
-CLAUDE_PROOT=(proot -b /data/data/com.termux/files/usr/tmp:/tmp)
+# Pin Claude Code to the 1.x line. 2.x requires a platform-native binary
+# whose npm postinstall refuses to download on android-arm64, leaving the
+# CLI unable to start. Until 2.x has an Android path, 1.x is the only
+# version that actually runs in Termux.
+CLAUDE_PIN="@anthropic-ai/claude-code@^1"
 
 # ── Parse flags (scan all args, not just $1) ────
 MODE="interactive"
@@ -112,11 +113,11 @@ check_node_version() {
 # Uses timeout if available, falls back to background+wait
 check_claude_health() {
     if check_cmd timeout; then
-        timeout 15 "${CLAUDE_PROOT[@]}" claude --version &>/dev/null 2>&1
+        timeout 15 claude --version &>/dev/null 2>&1
     else
         local tmpout
         tmpout=$(mktemp "${TMPDIR:-/tmp}/claude-health.XXXXXX" 2>/dev/null || echo "$HOME/tmp/.claude-health-$$")
-        "${CLAUDE_PROOT[@]}" claude --version >"$tmpout" 2>&1 &
+        claude --version >"$tmpout" 2>&1 &
         local pid=$!
         local count=0
         while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 15 ]; do
@@ -139,11 +140,11 @@ check_claude_health() {
 # ── Get Claude version string (timeout-safe) ───
 get_claude_version() {
     if check_cmd timeout; then
-        timeout 10 "${CLAUDE_PROOT[@]}" claude --version 2>/dev/null
+        timeout 10 claude --version 2>/dev/null
     else
         local tmpout
         tmpout=$(mktemp "${TMPDIR:-/tmp}/claude-ver.XXXXXX" 2>/dev/null || echo "$HOME/tmp/.claude-ver-$$")
-        "${CLAUDE_PROOT[@]}" claude --version >"$tmpout" 2>/dev/null &
+        claude --version >"$tmpout" 2>/dev/null &
         local pid=$!
         local count=0
         while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 10 ]; do
@@ -355,20 +356,20 @@ fi
 echo ""
 echo "📦 [4/7] Checking Claude Code..."
 if [ "$DRY_RUN" = "1" ]; then
-    echo "   [DRY] would run: npm install -g @anthropic-ai/claude-code"
-    WOULD_INSTALL+=("npm: @anthropic-ai/claude-code")
+    echo "   [DRY] would run: npm install -g $CLAUDE_PIN"
+    WOULD_INSTALL+=("npm: $CLAUDE_PIN")
     ok "Claude Code installed (dry-run)"
 elif check_cmd claude; then
     if check_claude_health; then
         ok "Claude Code working ($(get_claude_version))"
     else
-        warn "Claude Code binary found but not responding (Node.js version change?)"
-        echo "   📦 Reinstalling under proot (so postinstall sees linux-arm64)..."
-        "${CLAUDE_PROOT[@]}" npm install -g @anthropic-ai/claude-code && ok "Claude Code reinstalled" || { fail "Reinstall failed"; exit 1; }
+        warn "Claude Code binary found but not responding (likely 2.x without android-arm64 native binary)"
+        echo "   📦 Reinstalling pinned to 1.x ($CLAUDE_PIN)..."
+        npm install -g "$CLAUDE_PIN" && ok "Claude Code reinstalled" || { fail "Reinstall failed"; exit 1; }
     fi
 else
-    echo "   📦 Installing Claude Code under proot (so postinstall sees linux-arm64)..."
-    "${CLAUDE_PROOT[@]}" npm install -g @anthropic-ai/claude-code && ok "Claude Code installed" || { fail "Installation failed"; exit 1; }
+    echo "   📦 Installing Claude Code ($CLAUDE_PIN)..."
+    npm install -g "$CLAUDE_PIN" && ok "Claude Code installed" || { fail "Installation failed"; exit 1; }
 fi
 
 # Step 5: Storage access
