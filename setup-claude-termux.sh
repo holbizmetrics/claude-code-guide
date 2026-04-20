@@ -11,6 +11,8 @@
 #   ./setup-claude-termux.sh --all    # Install everything, no questions
 #   ./setup-claude-termux.sh --status # Show what's installed
 #   ./setup-claude-termux.sh --dry-run # Simulate install (no side effects)
+#   ./setup-claude-termux.sh --log    # Tee output to ~/setup-claude-termux.log
+#   ./setup-claude-termux.sh --log=PATH # Tee output to PATH
 #   ./setup-claude-termux.sh --help   # Show this help
 #   ./setup-claude-termux.sh --version # Show version
 #
@@ -33,7 +35,7 @@
 # Proof verification paths from: https://github.com/holbizmetrics/proof-anywhere
 # ══════════════════════════════════════════════════
 
-SCRIPT_VERSION="1.2.2"
+SCRIPT_VERSION="1.2.3"
 MIN_NODE_MAJOR=18
 NANODA_DIR="$HOME/nanoda_lib"
 
@@ -46,6 +48,7 @@ CLAUDE_PIN="@anthropic-ai/claude-code@^1"
 # ── Parse flags (scan all args, not just $1) ────
 MODE="interactive"
 DRY_RUN=0
+LOG_FILE=""
 for arg in "$@"; do
     case "$arg" in
         --help|-h)    MODE="help" ;;
@@ -53,12 +56,23 @@ for arg in "$@"; do
         --all)        MODE="all" ;;
         --dry-run)    DRY_RUN=1 ;;
         --version|-v) MODE="version" ;;
+        --log)        LOG_FILE="$HOME/setup-claude-termux.log" ;;
+        --log=*)      LOG_FILE="${arg#--log=}" ;;
     esac
 done
 
 # --dry-run without an explicit mode → imply --all (non-interactive, full flow)
 if [ "$DRY_RUN" = "1" ] && [ "$MODE" = "interactive" ]; then
     MODE="all"
+fi
+
+# ── Log re-exec (must come before any output we want captured) ───
+# Skip for --version/--help/--status (one-shot output, no side effects).
+if [ -n "$LOG_FILE" ] && [ -z "${SETUP_LOG_REENTRY:-}" ] \
+   && [ "$MODE" != "version" ] && [ "$MODE" != "help" ]; then
+    export SETUP_LOG_REENTRY=1
+    echo "📝 Logging to $LOG_FILE"
+    exec bash "$0" "$@" 2>&1 | tee "$LOG_FILE"
 fi
 
 # Track would-install actions for dry-run summary
