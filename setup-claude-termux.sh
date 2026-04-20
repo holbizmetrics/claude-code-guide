@@ -33,9 +33,14 @@
 # Proof verification paths from: https://github.com/holbizmetrics/proof-anywhere
 # ══════════════════════════════════════════════════
 
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.2.1"
 MIN_NODE_MAJOR=18
 NANODA_DIR="$HOME/nanoda_lib"
+
+# Claude Code has no android-arm64 native binary. We run it (and its npm
+# install, so the postinstall sees linux-arm64 and downloads the right
+# native binary) under the same proot bindings the .bashrc alias uses.
+CLAUDE_PROOT=(proot -b /data/data/com.termux/files/usr/tmp:/tmp)
 
 # ── Parse flags (scan all args, not just $1) ────
 MODE="interactive"
@@ -107,11 +112,11 @@ check_node_version() {
 # Uses timeout if available, falls back to background+wait
 check_claude_health() {
     if check_cmd timeout; then
-        timeout 15 claude --version &>/dev/null 2>&1
+        timeout 15 "${CLAUDE_PROOT[@]}" claude --version &>/dev/null 2>&1
     else
         local tmpout
         tmpout=$(mktemp "${TMPDIR:-/tmp}/claude-health.XXXXXX" 2>/dev/null || echo "$HOME/tmp/.claude-health-$$")
-        claude --version >"$tmpout" 2>&1 &
+        "${CLAUDE_PROOT[@]}" claude --version >"$tmpout" 2>&1 &
         local pid=$!
         local count=0
         while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 15 ]; do
@@ -134,11 +139,11 @@ check_claude_health() {
 # ── Get Claude version string (timeout-safe) ───
 get_claude_version() {
     if check_cmd timeout; then
-        timeout 10 claude --version 2>/dev/null
+        timeout 10 "${CLAUDE_PROOT[@]}" claude --version 2>/dev/null
     else
         local tmpout
         tmpout=$(mktemp "${TMPDIR:-/tmp}/claude-ver.XXXXXX" 2>/dev/null || echo "$HOME/tmp/.claude-ver-$$")
-        claude --version >"$tmpout" 2>/dev/null &
+        "${CLAUDE_PROOT[@]}" claude --version >"$tmpout" 2>/dev/null &
         local pid=$!
         local count=0
         while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 10 ]; do
@@ -358,12 +363,12 @@ elif check_cmd claude; then
         ok "Claude Code working ($(get_claude_version))"
     else
         warn "Claude Code binary found but not responding (Node.js version change?)"
-        echo "   📦 Reinstalling..."
-        npm install -g @anthropic-ai/claude-code && ok "Claude Code reinstalled" || { fail "Reinstall failed"; exit 1; }
+        echo "   📦 Reinstalling under proot (so postinstall sees linux-arm64)..."
+        "${CLAUDE_PROOT[@]}" npm install -g @anthropic-ai/claude-code && ok "Claude Code reinstalled" || { fail "Reinstall failed"; exit 1; }
     fi
 else
-    echo "   📦 Installing Claude Code..."
-    npm install -g @anthropic-ai/claude-code && ok "Claude Code installed" || { fail "Installation failed"; exit 1; }
+    echo "   📦 Installing Claude Code under proot (so postinstall sees linux-arm64)..."
+    "${CLAUDE_PROOT[@]}" npm install -g @anthropic-ai/claude-code && ok "Claude Code installed" || { fail "Installation failed"; exit 1; }
 fi
 
 # Step 5: Storage access
@@ -585,8 +590,10 @@ if [ -n "$SELECTIONS" ]; then
             warn "proot-distro missing — aborting Lean install"
             return 1
         fi
-        if ! (proot-distro list --installed 2>/dev/null | grep -q '^ubuntu' \
-              || proot-distro list 2>/dev/null | grep -A1 '^ubuntu' | grep -q -i 'installed: *true'); then
+        local ubuntu_rootfs="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu"
+        if [ -d "$ubuntu_rootfs" ]; then
+            ok "Ubuntu already installed in proot-distro"
+        else
             local avail_kb
             avail_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
             if [ -n "${avail_kb:-}" ] && [ "$avail_kb" -lt 3145728 ]; then
@@ -600,7 +607,18 @@ if [ -n "$SELECTIONS" ]; then
                 fi
             fi
             echo "   📦 Installing Ubuntu in proot-distro (~600MB download)..."
-            proot-distro install ubuntu || { warn "Ubuntu install failed"; return 1; }
+            local install_output install_rc
+            install_output=$(proot-distro install ubuntu 2>&1)
+            install_rc=$?
+            if [ "$install_rc" -eq 0 ]; then
+                ok "Ubuntu installed"
+            elif echo "$install_output" | grep -qi "already installed"; then
+                ok "Ubuntu already installed (detected via install error)"
+            else
+                warn "Ubuntu install failed"
+                echo "$install_output" | sed 's/^/      /'
+                return 1
+            fi
         fi
         echo "   📦 Installing elan + Lean 4 inside Ubuntu proot..."
         proot-distro login ubuntu -- bash -c '
