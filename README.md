@@ -241,6 +241,18 @@ Sessions are JSONL files (one JSON object per line) in:
 
 Each line contains a message with role, content, tool calls, and model info. The files grow as you talk — a long session can be 20MB+.
 
+**Subagents** spawned via the `Task` tool get their own transcripts, nested one level deeper:
+
+```
+~/.claude/projects/<project-name>/<session-uuid>/subagents/agent-<agent-id>.jsonl
+```
+
+`list`, `search`, `extract`, and `export` all reach these too. You can refer to a subagent by its bare `<agent-id>` (the same ID printed by `Task` in the parent session).
+
+## Cookbook
+
+For non-obvious patterns — recovering an overwritten file, diagnosing a subagent that errored early, post-compaction session-self-search, anti-fabrication discipline — see [`tool/COOKBOOK.md`](tool/COOKBOOK.md).
+
 ## The Complete Claude Code Guide
 
 This repo also hosts [The Complete Claude Code Guide](https://holbizmetrics.github.io/claude-code-guide/) — 50+ sections covering installation, hooks, memory, subagents, skills, MCP, YOLO mode, Android/Termux, and more.
