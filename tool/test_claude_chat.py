@@ -116,6 +116,25 @@ def toolcall_session(tmp_path):
     return Session(path)
 
 
+@pytest.fixture
+def large_toolcall_session(tmp_path):
+    """Session with a tool call whose input exceeds the default 500/400-char export caps.
+
+    Used to verify the --no-truncate flag preserves full content for byte-perfect recovery.
+    """
+    long_old = "OLD_MARKER_" + ("a" * 600) + "_END_OLD"
+    long_new = "NEW_MARKER_" + ("b" * 600) + "_END_NEW"
+    path = _write_jsonl(tmp_path, "cafe9999-0000-0000-0000-000000000000.jsonl", [
+        _user_line("Edit a long block"),
+        _assistant_tool_line("Edit", {
+            "file_path": "/tmp/big.py",
+            "old_string": long_old,
+            "new_string": long_new,
+        }),
+    ])
+    return Session(path)
+
+
 # ─── Parser Tests ───────────────────────────────────────────────────────────
 
 class TestParser:
@@ -660,6 +679,35 @@ class TestExports:
         assert "<h2" in html
         assert "<h3" in html
         assert "Section One" in html
+
+    def test_markdown_truncates_long_tool_input_by_default(self, large_toolcall_session):
+        large_toolcall_session.parse()
+        md = cc.export_markdown(large_toolcall_session)
+        # Default cap is 500 chars on the JSON-rendered input; the END_OLD sentinel
+        # sits past that boundary in the long_old fixture string.
+        assert "OLD_MARKER_" in md
+        assert "_END_OLD" not in md
+
+    def test_markdown_no_truncate_keeps_full_input(self, large_toolcall_session):
+        large_toolcall_session.parse()
+        md = cc.export_markdown(large_toolcall_session, no_truncate=True)
+        assert "OLD_MARKER_" in md
+        assert "_END_OLD" in md
+        assert "_END_NEW" in md
+
+    def test_html_truncates_long_tool_input_by_default(self, large_toolcall_session):
+        large_toolcall_session.parse()
+        html = cc.export_html(large_toolcall_session)
+        # Default HTML cap is 400 chars
+        assert "OLD_MARKER_" in html
+        assert "_END_OLD" not in html
+
+    def test_html_no_truncate_keeps_full_input(self, large_toolcall_session):
+        large_toolcall_session.parse()
+        html = cc.export_html(large_toolcall_session, no_truncate=True)
+        assert "OLD_MARKER_" in html
+        assert "_END_OLD" in html
+        assert "_END_NEW" in html
 
 
 # ─── Diagrams Mode ──────────────────────────────────────────────────────────

@@ -519,6 +519,9 @@ def cmd_search(args):
             print(f"    ... and {len(contexts) - 3} more matches")
         print()
 
+    print("Tip: `export <id> --format md` for human-reading (tool inputs truncated at 500 chars).")
+    print("     `export <id> --format md --no-truncate` for byte-perfect file/edit recovery.")
+
 
 def cmd_export(args):
     """Export a session to various formats."""
@@ -532,14 +535,17 @@ def cmd_export(args):
     fmt = args.format or "md"
     out_dir = Path(args.output) if args.output else Path(".")
 
+    no_truncate = getattr(args, "no_truncate", False)
+
     if fmt == "md":
-        content = export_markdown(session)
+        content = export_markdown(session, no_truncate=no_truncate)
         ext = ".md"
     elif fmt == "html":
         content = export_html(
             session,
             rich=getattr(args, "rich", False),
             diagrams=getattr(args, "diagrams", False),
+            no_truncate=no_truncate,
         )
         ext = ".html"
     elif fmt == "txt":
@@ -895,8 +901,13 @@ def cmd_protect(args):
 
 # ─── Export Formatters ───────────────────────────────────────────────────────
 
-def export_markdown(session):
-    """Export session as Markdown."""
+def export_markdown(session, no_truncate=False):
+    """Export session as Markdown.
+
+    Tool-call inputs are truncated to 500 chars for readability by default;
+    pass no_truncate=True for full content (needed for byte-perfect recovery
+    of files edited via the Edit/Write tools).
+    """
     lines = [
         f"# Claude Code Session: {session.short_id}",
         f"",
@@ -922,7 +933,9 @@ def export_markdown(session):
             if m.text:
                 lines.append(m.text)
             for tc in m.tool_calls:
-                input_str = json.dumps(tc.input_data, indent=2)[:500]
+                input_str = json.dumps(tc.input_data, indent=2)
+                if not no_truncate:
+                    input_str = input_str[:500]
                 lines.append(f"\n<details><summary>Tool: {tc.summary()}</summary>\n")
                 lines.append(f"```json\n{input_str}\n```")
                 lines.append(f"</details>\n")
@@ -1130,7 +1143,7 @@ def _build_sequence_diagram(session):
     return "\n".join(lines)
 
 
-def export_html(session, embedded=False, rich=False, diagrams=False):
+def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate=False):
     """Export session as HTML with dark theme."""
     messages_html = []
 
@@ -1182,7 +1195,9 @@ def export_html(session, embedded=False, rich=False, diagrams=False):
         tools_html = ""
         if m.tool_calls:
             for tc in m.tool_calls:
-                input_preview = json.dumps(tc.input_data, indent=2)[:400]
+                input_preview = json.dumps(tc.input_data, indent=2)
+                if not no_truncate:
+                    input_preview = input_preview[:400]
                 tools_html += f"""
                 <details class="tool-call">
                     <summary>{html_mod.escape(tc.summary())}</summary>
@@ -1745,6 +1760,7 @@ Examples:
     p.add_argument("--open", action="store_true", help="Open in browser/editor after export")
     p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
     p.add_argument("--diagrams", action="store_true", help="HTML: include a mermaid sequenceDiagram of tool calls")
+    p.add_argument("--no-truncate", action="store_true", help="Render full tool-call inputs (md/html). Default truncates at 500/400 chars for human reading; use this for byte-perfect file recovery.")
 
     # backup
     p = sub.add_parser("backup", help="Backup session files")
