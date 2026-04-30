@@ -136,13 +136,33 @@ class ToolCall:
 
 
 class Session:
-    """A parsed Claude Code session."""
+    """A parsed Claude Code session.
+
+    Also handles subagent transcripts nested at
+    <project>/<session_id>/subagents/agent-<agent_id>.jsonl. Subagent
+    sessions expose `is_subagent`, `agent_id`, and `parent_session_id`;
+    their `short_id` is the first 8 chars of the agent_id (without the
+    "agent-" prefix), so users can refer to subagents by bare agent_id.
+    """
 
     def __init__(self, path):
         self.path = Path(path)
         self.session_id = self.path.stem
-        self.short_id = self.session_id[:8]
-        self.project = self.path.parent.name
+        # Detect subagent: lives at <project>/<session_id>/subagents/agent-<id>.jsonl
+        self.is_subagent = (
+            self.path.parent.name == "subagents"
+            and self.session_id.startswith("agent-")
+        )
+        if self.is_subagent:
+            self.agent_id = self.session_id[len("agent-"):]
+            self.parent_session_id = self.path.parent.parent.name
+            self.short_id = self.agent_id[:8]
+            self.project = self.path.parent.parent.parent.name
+        else:
+            self.agent_id = None
+            self.parent_session_id = None
+            self.short_id = self.session_id[:8]
+            self.project = self.path.parent.name
         self.messages = []
         self.model = None
         self._stat = self.path.stat()
@@ -319,14 +339,27 @@ def find_all_sessions(project_filter=None):
                     sessions.append(Session(jsonl))
             except (FileNotFoundError, OSError):
                 continue  # file deleted between glob and stat
+        # Subagent transcripts: <project>/<session_id>/subagents/agent-<id>.jsonl
+        for sub_jsonl in project_dir.glob("*/subagents/agent-*.jsonl"):
+            try:
+                if sub_jsonl.stat().st_size > 100:
+                    sessions.append(Session(sub_jsonl))
+            except (FileNotFoundError, OSError):
+                continue
     sessions.sort(key=lambda s: s.modified, reverse=True)
     return sessions
 
 
 def find_session(session_id):
-    """Find a specific session by ID (full or short)."""
+    """Find a specific session by ID (full or short).
+
+    Subagents can also be looked up by bare agent_id (without the `agent-`
+    prefix), since that's what users see in TaskCreate output.
+    """
     for s in find_all_sessions():
         if s.session_id == session_id or s.short_id == session_id:
+            return s
+        if s.is_subagent and s.agent_id == session_id:
             return s
     return None
 
@@ -458,7 +491,8 @@ def cmd_list(args):
         size_kb = s.size / 1024
         summary = s.summary(80)
         num = f"[{i:>3}] " if interactive else ""
-        print(f"  {num}{s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {size_kb:6.0f}KB  {age_str:>8}  {summary}")
+        tag = "  >sub " if s.is_subagent else "       "
+        print(f"  {num}{s.short_id}{tag}{s.modified.strftime('%Y-%m-%d %H:%M')}  {size_kb:6.0f}KB  {age_str:>8}  {summary}")
 
         if detail:
             previews = _session_preview(s)
