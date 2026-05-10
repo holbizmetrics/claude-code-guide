@@ -559,11 +559,24 @@ def cmd_search(args):
 
 def cmd_export(args):
     """Export a session to various formats."""
-    session = find_session(args.session_id)
-    if not session:
-        print(f"Session not found: {args.session_id}")
-        print("Use 'claude-chat.py list' to see available sessions.")
-        return
+    if getattr(args, "file", None):
+        if args.session_id:
+            print("Pass either session_id OR --file, not both.")
+            return
+        file_path = Path(args.file)
+        if not file_path.is_file():
+            print(f"File not found: {file_path}")
+            return
+        session = Session(file_path)
+    else:
+        if not args.session_id:
+            print("Provide a session_id or use --file <path>.")
+            return
+        session = find_session(args.session_id)
+        if not session:
+            print(f"Session not found: {args.session_id}")
+            print("Use 'claude-chat.py list' to see available sessions.")
+            return
 
     session.parse()
     fmt = args.format or "md"
@@ -1788,7 +1801,8 @@ Examples:
 
     # export
     p = sub.add_parser("export", help="Export session to file")
-    p.add_argument("session_id", help="Session ID (full or first 8 chars)")
+    p.add_argument("session_id", nargs="?", help="Session ID (full or first 8 chars). Omit when using --file.")
+    p.add_argument("--file", help="Path to a JSONL transcript file (e.g. a pre-compact export). Bypasses session lookup.")
     p.add_argument("--format", "-f", choices=["md", "html", "txt", "tex"], default="md", help="Output format")
     p.add_argument("--output", "-o", help="Output directory")
     p.add_argument("--open", action="store_true", help="Open in browser/editor after export")
