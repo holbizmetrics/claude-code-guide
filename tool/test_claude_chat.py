@@ -1014,3 +1014,60 @@ class TestNumberedRefs:
         assert "[  1]" not in captured
         # CLI mode does NOT populate the cache
         assert cc._interactive_index == []
+
+
+# ─── cmd_export --file flag ────────────────────────────────────────────────
+
+class TestCmdExportFile:
+    """The --file flag bypasses session lookup so any JSONL path works
+    (e.g. PreCompact hook exports living outside ~/.claude/projects/)."""
+
+    @staticmethod
+    def _args(tmp_path, file=None, session_id=None):
+        class A:
+            pass
+        a = A()
+        a.session_id = session_id
+        a.file = file
+        a.format = "md"
+        a.output = str(tmp_path)
+        a.open = False
+        a.rich = False
+        a.diagrams = False
+        a.no_truncate = False
+        return a
+
+    def test_file_flag_exports_arbitrary_jsonl(self, tmp_path, capsys):
+        jsonl = _write_jsonl(tmp_path, "pre-compact.jsonl", [
+            _user_line("ping"),
+            _assistant_line("pong"),
+        ])
+        cc.cmd_export(self._args(tmp_path, file=str(jsonl)))
+        out = capsys.readouterr().out
+        assert "Exported to:" in out
+        # Output file lands in tmp_path with the standard naming convention
+        exports = list(tmp_path.glob("claude-chat_*.md"))
+        assert len(exports) == 1
+        content = exports[0].read_text(encoding="utf-8")
+        assert "ping" in content
+        assert "pong" in content
+
+    def test_file_and_session_id_together_errors(self, tmp_path, capsys):
+        jsonl = _write_jsonl(tmp_path, "x.jsonl", [_user_line("hi")])
+        cc.cmd_export(self._args(tmp_path, file=str(jsonl), session_id="abc12345"))
+        out = capsys.readouterr().out
+        assert "either" in out.lower()
+        # Nothing should have been written
+        assert list(tmp_path.glob("claude-chat_*.md")) == []
+
+    def test_neither_flag_errors(self, tmp_path, capsys):
+        cc.cmd_export(self._args(tmp_path))
+        out = capsys.readouterr().out
+        assert "session_id" in out.lower() or "--file" in out
+        assert list(tmp_path.glob("claude-chat_*.md")) == []
+
+    def test_file_path_missing_errors(self, tmp_path, capsys):
+        cc.cmd_export(self._args(tmp_path, file=str(tmp_path / "nope.jsonl")))
+        out = capsys.readouterr().out
+        assert "not found" in out.lower()
+        assert list(tmp_path.glob("claude-chat_*.md")) == []
