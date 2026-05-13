@@ -322,6 +322,12 @@ class Session:
 
 
 # ─── Session Discovery ───────────────────────────────────────────────────────
+#
+# find_all_sessions / find_session are pure lookups with no per-call state and
+# no invariants beyond what Session already enforces — they stay as functions.
+# (Bundling them into a "SessionFinder" class with only static-method behavior
+# would be the exact "surface compliance without semantic compliance" the
+# OOP guide warns against.)
 
 def find_all_sessions(project_filter=None):
     """Find all JSONL session files across all projects."""
@@ -364,7 +370,35 @@ def find_session(session_id):
     return None
 
 
-# ─── Commands ────────────────────────────────────────────────────────────────
+# ─── Tool-call iteration ─────────────────────────────────────────────────────
+#
+# _iter_tool_call_strings stays a module-level function (not absorbed into
+# SessionScanner) because both SessionScanner and WikiCommand call it.
+# It's a pure projection of ToolCall.input_data into searchable (key, string)
+# pairs — there's no scanner state involved, so making it a SessionScanner
+# static method would be misleading about ownership. Multiple call sites +
+# pure data shape → module helper is the right fit.
+
+def _iter_tool_call_strings(tc):
+    """Yield (key, str_value) pairs from a ToolCall.input_data, flattening nested values."""
+    for key, val in tc.input_data.items():
+        if isinstance(val, str):
+            yield key, val
+        elif isinstance(val, (list, tuple)):
+            for i, v in enumerate(val):
+                if isinstance(v, str):
+                    yield f"{key}[{i}]", v
+        elif isinstance(val, dict):
+            for k2, v in val.items():
+                if isinstance(v, str):
+                    yield f"{key}.{k2}", v
+
+
+# ─── Session preview helper ──────────────────────────────────────────────────
+#
+# _session_preview is a tiny formatting helper used only by ListCommand. It's
+# stateless (input → output, no invariants) — keeping it module-level avoids
+# inflating ListCommand with helpers that don't share its state.
 
 def _session_preview(session, max_msgs=4):
     """Get a list of preview lines showing what the session was about."""
@@ -457,81 +491,26 @@ def _substitute_numbered_refs(tokens, index=None, autopopulate=True):
     return out
 
 
-def cmd_list(args):
-    """List all sessions with summaries."""
-    sessions = find_all_sessions(args.project)
-    if not sessions:
-        print("No sessions found.")
-        return
+# ─── SessionScanner ──────────────────────────────────────────────────────────
 
-    limit = args.limit or 20
-    detail = getattr(args, "detail", False)
-    interactive = getattr(args, "_interactive", False)
-    current_project = None
+class SessionScanner:
+    """Scans a Session for a query string, returning match count + snippets.
 
-    shown = sessions[:limit]
-    if interactive:
-        _interactive_index.clear()
-        _interactive_index.extend(shown)
+    Earns its existence: holds the normalized query + scan options (tools_only,
+    context width) as state, and enforces the invariant that the query is
+    always pre-lowercased once at construction (callers shouldn't re-normalize
+    on every scan). `scan()` is the behavior over that state.
+    """
 
-    for i, s in enumerate(shown, start=1):
-        if s.project != current_project:
-            current_project = s.project
-            print(f"\n  {current_project}")
-            print(f"  {'─' * min(60, len(current_project))}")
+    def __init__(self, query, *, context=40, tools_only=False):
+        # Invariant: stored query is always lower-cased (matches are case-insensitive).
+        self.query = query.lower()
+        self.context = max(0, context)
+        self.tools_only = tools_only
 
-        age = datetime.now() - s.modified
-        if age.days > 0:
-            age_str = f"{age.days}d ago"
-        elif age.seconds > 3600:
-            age_str = f"{age.seconds // 3600}h ago"
-        else:
-            age_str = f"{age.seconds // 60}m ago"
-
-        size_kb = s.size / 1024
-        summary = s.summary(80)
-        num = f"[{i:>3}] " if interactive else ""
-        tag = "  >sub " if s.is_subagent else "       "
-        print(f"  {num}{s.short_id}{tag}{s.modified.strftime('%Y-%m-%d %H:%M')}  {size_kb:6.0f}KB  {age_str:>8}  {summary}")
-
-        if detail:
-            previews = _session_preview(s)
-            for p in previews:
-                print(f"              > {p}")
-            if previews:
-                print()
-
-    total = len(sessions)
-    if total > limit:
-        print(f"\n  ... and {total - limit} more. Use --limit {total} to see all.")
-    print(f"\n  Total: {total} sessions across {len(set(s.project for s in sessions))} project(s)")
-    if interactive:
-        print(f"  Tip: use the number, e.g. `export 1 --format html` or `open 2`")
-
-
-def _iter_tool_call_strings(tc):
-    """Yield (key, str_value) pairs from a ToolCall.input_data, flattening nested values."""
-    for key, val in tc.input_data.items():
-        if isinstance(val, str):
-            yield key, val
-        elif isinstance(val, (list, tuple)):
-            for i, v in enumerate(val):
-                if isinstance(v, str):
-                    yield f"{key}[{i}]", v
-        elif isinstance(val, dict):
-            for k2, v in val.items():
-                if isinstance(v, str):
-                    yield f"{key}.{k2}", v
-
-
-def _scan_session(s, query, context, tools_only):
-    """Return (count, contexts) for one session. contexts is list of (role, snippet)."""
-    count = 0
-    contexts = []
-
-    def _snippet(text, idx):
-        start = max(0, idx - context)
-        end = min(len(text), idx + len(query) + context)
+    def _snippet(self, text, idx):
+        start = max(0, idx - self.context)
+        end = min(len(text), idx + len(self.query) + self.context)
         out = text[start:end].replace("\n", " ")
         if start > 0:
             out = "..." + out
@@ -539,689 +518,146 @@ def _scan_session(s, query, context, tools_only):
             out = out + "..."
         return out
 
-    for m in s.messages:
-        if tools_only:
-            for tc in m.tool_calls:
-                for field, val in _iter_tool_call_strings(tc):
-                    lv = val.lower()
-                    if query in lv:
-                        count += lv.count(query)
-                        idx = lv.index(query)
-                        contexts.append((m.role, f"[{tc.name}.{field}] {_snippet(val, idx)}"))
-        else:
-            if m.text:
-                lt = m.text.lower()
-                if query in lt:
-                    count += lt.count(query)
-                    idx = lt.index(query)
-                    contexts.append((m.role, _snippet(m.text, idx)))
-    return count, contexts
-
-
-def cmd_search(args):
-    """Search across all conversations (or within a single session via --in)."""
-    query = args.query.lower()
-    context = max(0, getattr(args, "context", 40))
-    in_session_id = getattr(args, "in_session", None)
-    tools_only = getattr(args, "tools", False)
-
-    # Source of sessions
-    if in_session_id:
-        target = find_session(in_session_id)
-        if not target:
-            print(f"Session not found: {in_session_id}")
-            print("Use 'claude-chat.py list' to see available sessions.")
-            return
-        sessions = [target]
-    else:
-        sessions = find_all_sessions(args.project)
-
-    results = []
-    for s in sessions:
-        try:
-            s.parse()
-            count, contexts = _scan_session(s, query, context, tools_only)
-            if count > 0:
-                results.append((s, count, contexts))
-        except (IOError, OSError):
-            continue
-
-    if not results:
-        field_tag = " in tool calls" if tools_only else ""
-        print(f'No results for "{args.query}"{field_tag}')
-        # Project-miss suggestion: filter was set, no hits in that project — check elsewhere.
-        if args.project and not in_session_id:
-            other_projects = {}
-            for s in find_all_sessions(None):
-                if args.project.lower() in s.project.lower():
-                    continue  # already searched
-                try:
-                    s.parse()
-                    c, _ = _scan_session(s, query, context, tools_only)
-                    if c > 0:
-                        other_projects[s.project] = other_projects.get(s.project, 0) + c
-                except (IOError, OSError):
-                    continue
-            if other_projects:
-                print(f"\nDid you mean a different project? Matches outside '--project {args.project}':")
-                for p, n in sorted(other_projects.items(), key=lambda x: -x[1])[:5]:
-                    print(f"  --project {p}  ({n} match(es))")
-        return
-
-    results.sort(key=lambda r: r[1], reverse=True)
-    field_tag = " (tool-call inputs)" if tools_only else ""
-    if in_session_id:
-        s = results[0][0]
-        print(f'Found "{args.query}" in session {s.short_id}{field_tag} — {results[0][1]} match(es):\n')
-    else:
-        print(f'Found "{args.query}" in {len(results)} session(s){field_tag}:\n')
-
-    # When scoped to one session, show all matches; otherwise summarize per-session.
-    preview_limit = 50 if in_session_id else 3
-
-    for s, count, contexts in results[:args.limit or 20]:
-        if not in_session_id:
-            print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {count} matches  [{s.project}]")
-        for role, snippet in contexts[:preview_limit]:
-            role_tag = "YOU" if role == "user" else "AI "
-            print(f"    {role_tag}: {snippet}")
-        if len(contexts) > preview_limit:
-            print(f"    ... and {len(contexts) - preview_limit} more matches")
-        print()
-
-    print("Tip: `export <id> --format md` for human-reading (tool inputs truncated at 500 chars).")
-    print("     `export <id> --format md --no-truncate` for byte-perfect file/edit recovery.")
-
-
-def cmd_export(args):
-    """Export a session to various formats."""
-    if getattr(args, "file", None):
-        if args.session_id:
-            print("Pass either session_id OR --file, not both.")
-            return
-        file_path = Path(args.file)
-        if not file_path.is_file():
-            print(f"File not found: {file_path}")
-            return
-        session = Session(file_path)
-    else:
-        if not args.session_id:
-            print("Provide a session_id or use --file <path>.")
-            return
-        session = find_session(args.session_id)
-        if not session:
-            print(f"Session not found: {args.session_id}")
-            print("Use 'claude-chat.py list' to see available sessions.")
-            return
-
-    session.parse()
-    fmt = args.format or "md"
-    out_dir = Path(args.output) if args.output else Path(".")
-
-    no_truncate = getattr(args, "no_truncate", False)
-
-    if fmt == "md":
-        content = export_markdown(session, no_truncate=no_truncate)
-        ext = ".md"
-    elif fmt == "html":
-        content = export_html(
-            session,
-            rich=getattr(args, "rich", False),
-            diagrams=getattr(args, "diagrams", False),
-            no_truncate=no_truncate,
-        )
-        ext = ".html"
-    elif fmt == "txt":
-        content = export_txt(session)
-        ext = ".txt"
-    elif fmt == "tex":
-        content = export_tex(session)
-        ext = ".tex"
-    else:
-        print(f"Unknown format: {fmt}. Use: md, html, txt, tex")
-        return
-
-    filename = f"claude-chat_{session.short_id}_{session.modified.strftime('%Y%m%d')}{ext}"
-    out_path = out_dir / filename
-
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    print(f"Exported to: {out_path}")
-
-    if args.open:
-        webbrowser.open(str(out_path.resolve()))
-
-
-def cmd_backup(args):
-    """Backup sessions with optional watch mode."""
-    backup_dir = Path(args.output) if args.output else BACKUP_DIR
-    sessions = find_all_sessions(args.project)
-
-    if args.watch:
-        print(f"=== Claude Chat Backup Watcher ===")
-        print(f"Backup dir:    {backup_dir}")
-        print(f"Poll interval: {args.interval}s")
-        print(f"Projects:      {len(set(s.project for s in sessions))}")
-        print(f"\nInitial backup...")
-
-    file_states = {}
-    backed_up = 0
-
-    def do_backup():
-        nonlocal backed_up
+    def scan(self, session):
+        """Return (count, contexts) for one session. contexts is list of (role, snippet)."""
         count = 0
-        for s in find_all_sessions(args.project):
-            key = str(s.path)
-            current = (s.size, s._stat.st_mtime)
-            if key not in file_states or file_states[key] != current:
-                file_states[key] = current
-                project_backup = backup_dir / s.project
-                project_backup.mkdir(parents=True, exist_ok=True)
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                dest = project_backup / f"{s.short_id}_{ts}.jsonl"
-                shutil.copy2(s.path, dest)
-                size_kb = dest.stat().st_size / 1024
-                print(f"  [BACKUP] {s.short_id} -> {dest.name} ({size_kb:.0f} KB)")
-
-                # Prune old backups
-                old = sorted(project_backup.glob(f"{s.short_id}_*.jsonl"),
-                             key=lambda f: f.stat().st_mtime, reverse=True)
-                for f in old[5:]:
-                    f.unlink()
-                count += 1
-                backed_up += 1
-        return count
-
-    do_backup()
-    print(f"  {backed_up} session(s) backed up to {backup_dir}")
-
-    if args.watch:
-        print(f"\nWatching for changes (Ctrl+C to stop)...\n")
-        try:
-            while True:
-                time.sleep(args.interval)
-                n = do_backup()
-                if n:
-                    print(f"  [{datetime.now().strftime('%H:%M:%S')}] {n} file(s) updated")
-        except KeyboardInterrupt:
-            print(f"\nStopped. Total backed up: {backed_up}")
-
-
-def cmd_stats(args):
-    """Show usage statistics."""
-    sessions = find_all_sessions(args.project)
-    if not sessions:
-        print("No sessions found.")
-        return
-
-    total_size = sum(s.size for s in sessions)
-    projects = set(s.project for s in sessions)
-
-    # Parse a sample for deeper stats
-    total_user_msgs = 0
-    total_asst_msgs = 0
-    total_tool_calls = 0
-    total_code_blocks = 0
-    models_used = {}
-    oldest = min(s.modified for s in sessions)
-    newest = max(s.modified for s in sessions)
-
-    print(f"Analyzing {len(sessions)} sessions...")
-    for s in sessions:
-        s.parse()
-        for m in s.messages:
-            if m.role == "user":
-                total_user_msgs += 1
-            elif m.role == "assistant":
-                total_asst_msgs += 1
-                total_tool_calls += len(m.tool_calls)
-        total_code_blocks += len(s.code_blocks())
-        if s.model:
-            models_used[s.model] = models_used.get(s.model, 0) + 1
-
-    days_span = max(1, (newest - oldest).days)
-
-    print(f"\n{'=' * 50}")
-    print(f"  Claude Code Chat Statistics")
-    print(f"{'=' * 50}")
-    print(f"  Sessions:        {len(sessions)}")
-    print(f"  Projects:        {len(projects)}")
-    print(f"  Date range:      {oldest.strftime('%Y-%m-%d')} to {newest.strftime('%Y-%m-%d')} ({days_span} days)")
-    print(f"  Total size:      {total_size / (1024*1024):.1f} MB")
-    print(f"  Avg session:     {total_size / (1024 * len(sessions)):.0f} KB")
-    print(f"")
-    print(f"  Your messages:   {total_user_msgs}")
-    print(f"  AI responses:    {total_asst_msgs}")
-    print(f"  Tool calls:      {total_tool_calls}")
-    print(f"  Code blocks:     {total_code_blocks}")
-    print(f"  Msgs/day:        {(total_user_msgs + total_asst_msgs) / days_span:.1f}")
-    print(f"  Sessions/day:    {len(sessions) / days_span:.1f}")
-
-    if models_used:
-        print(f"\n  Models:")
-        for model, count in sorted(models_used.items(), key=lambda x: -x[1]):
-            print(f"    {model}: {count} session(s)")
-
-    # Top sessions by size
-    print(f"\n  Largest sessions:")
-    for s in sorted(sessions, key=lambda s: s.size, reverse=True)[:5]:
-        print(f"    {s.short_id}  {s.size/1024:.0f}KB  {s.modified.strftime('%Y-%m-%d')}  {s.summary(50)}")
-
-    # Project breakdown
-    print(f"\n  Projects:")
-    for p in sorted(projects):
-        p_sessions = [s for s in sessions if s.project == p]
-        p_size = sum(s.size for s in p_sessions)
-        print(f"    {p[:50]}  {len(p_sessions)} sessions  {p_size/(1024*1024):.1f}MB")
-
-
-def cmd_extract(args):
-    """Extract specific content from a session."""
-    session = find_session(args.session_id)
-    if not session:
-        print(f"Session not found: {args.session_id}")
-        return
-
-    session.parse()
-
-    if args.code:
-        blocks = session.code_blocks()
-        if not blocks:
-            print("No code blocks found.")
-            return
-        print(f"Found {len(blocks)} code block(s):\n")
-        for i, b in enumerate(blocks, 1):
-            who = "You" if b["role"] == "user" else "AI"
-            print(f"--- Block {i} ({b['lang']}, {who}) ---")
-            print(b["code"])
-            print()
-
-    elif args.ideas:
-        print(f"Your messages in session {session.short_id}:\n")
-        for m in session.user_messages():
-            clean = m.text.strip()
-            if len(clean) > 10:
-                print(f"  > {clean[:300]}")
-                if len(clean) > 300:
-                    print(f"    [...{len(clean)} chars]")
-                print()
-
-    elif args.decisions:
-        # Search for decision-like patterns
-        patterns = [
-            r"(?i)(let'?s? go with|decided|decision|chose|picking|option \d|we('ll| will) use)",
-            r"(?i)(the plan is|approach:|strategy:|going with|settled on)",
-        ]
-        print(f"Decisions in session {session.short_id}:\n")
-        found = 0
+        contexts = []
         for m in session.messages:
-            if not m.text:
-                continue
-            for pat in patterns:
-                for match in re.finditer(pat, m.text):
-                    start = max(0, match.start() - 30)
-                    end = min(len(m.text), match.end() + 100)
-                    snippet = m.text[start:end].replace("\n", " ")
-                    who = "You" if m.role == "user" else "AI"
-                    print(f"  [{who}] ...{snippet}...")
-                    found += 1
-                    break
-        if not found:
-            print("  No explicit decisions found.")
-
-    else:
-        print("Specify what to extract: --code, --ideas, or --decisions")
-
-
-def cmd_serve(args):
-    """Start a local web server to browse conversations."""
-    port = args.port or 3456
-
-    class ChatHandler(BaseHTTPRequestHandler):
-        def log_message(self, format, *a):
-            pass  # suppress request logs
-
-        def do_GET(self):
-            parsed = urlparse(self.path)
-            path = parsed.path
-            query = parse_qs(parsed.query)
-
-            if path == "/" or path == "":
-                self._serve_index(query)
-            elif path.startswith("/session/"):
-                session_id = path.split("/session/")[1].strip("/")
-                self._serve_session(session_id)
-            elif path == "/search":
-                self._serve_search(query)
+            if self.tools_only:
+                for tc in m.tool_calls:
+                    for field, val in _iter_tool_call_strings(tc):
+                        lv = val.lower()
+                        if self.query in lv:
+                            count += lv.count(self.query)
+                            idx = lv.index(self.query)
+                            contexts.append((m.role, f"[{tc.name}.{field}] {self._snippet(val, idx)}"))
             else:
-                self.send_error(404)
-
-        def _send_html(self, html_content):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(html_content.encode("utf-8"))
-
-        def _serve_index(self, query):
-            project_filter = query.get("project", [None])[0]
-            sessions = find_all_sessions(project_filter)
-
-            rows = []
-            for s in sessions:
-                summary_text = html_mod.escape(s.summary(120))
-                size_kb = s.size / 1024
-                rows.append(f"""
-                <tr onclick="window.location='/session/{s.short_id}'" style="cursor:pointer">
-                    <td class="mono">{s.short_id}</td>
-                    <td>{s.modified.strftime('%Y-%m-%d %H:%M')}</td>
-                    <td>{size_kb:.0f} KB</td>
-                    <td class="project">{html_mod.escape(s.project[:40])}</td>
-                    <td>{summary_text}</td>
-                </tr>""")
-
-            page = WEB_TEMPLATE_INDEX.replace("{{ROWS}}", "\n".join(rows))
-            page = page.replace("{{COUNT}}", str(len(sessions)))
-            page = page.replace("{{PROJECTS}}", str(len(set(s.project for s in sessions))))
-            self._send_html(page)
-
-        def _serve_session(self, session_id):
-            session = find_session(session_id)
-            if not session:
-                self.send_error(404, f"Session not found: {session_id}")
-                return
-            session.parse()
-            html_content = export_html(session, embedded=True)
-            self._send_html(html_content)
-
-        def _serve_search(self, query):
-            q = query.get("q", [""])[0]
-            if not q:
-                self._send_html("<html><body>No query</body></html>")
-                return
-
-            sessions = find_all_sessions()
-            results = []
-            for s in sessions:
-                try:
-                    with open(s.path, "r", encoding="utf-8", errors="replace") as f:
-                        content = f.read()
-                    if q.lower() in content.lower():
-                        count = content.lower().count(q.lower())
-                        results.append((s, count))
-                except (IOError, OSError):
-                    continue
-
-            results.sort(key=lambda r: r[1], reverse=True)
-            rows = []
-            for s, count in results[:50]:
-                summary_text = html_mod.escape(s.summary(100))
-                rows.append(f"""
-                <tr onclick="window.location='/session/{s.short_id}'" style="cursor:pointer">
-                    <td class="mono">{s.short_id}</td>
-                    <td>{count} hits</td>
-                    <td>{s.modified.strftime('%Y-%m-%d %H:%M')}</td>
-                    <td>{summary_text}</td>
-                </tr>""")
-
-            page = WEB_TEMPLATE_SEARCH.replace("{{ROWS}}", "\n".join(rows))
-            page = page.replace("{{QUERY}}", html_mod.escape(q))
-            page = page.replace("{{COUNT}}", str(len(results)))
-            self._send_html(page)
-
-    try:
-        server = HTTPServer(("127.0.0.1", port), ChatHandler)
-    except OSError as e:
-        if "address already in use" in str(e).lower() or getattr(e, "errno", 0) == 10048:
-            print(f"Port {port} is already in use. Try: claude-chat serve --port {port + 1}")
-            return
-        raise
-
-    url = f"http://127.0.0.1:{port}"
-    print(f"Claude Chat Browser running at {url}")
-    print("Note: No authentication. Do not expose this port on a network.")
-    print("Press Ctrl+C to stop.\n")
-
-    if not args.no_open:
-        webbrowser.open(url)
-
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nStopped.")
-        server.server_close()
+                if m.text:
+                    lt = m.text.lower()
+                    if self.query in lt:
+                        count += lt.count(self.query)
+                        idx = lt.index(self.query)
+                        contexts.append((m.role, self._snippet(m.text, idx)))
+        return count, contexts
 
 
-def cmd_wiki(args):
-    """Build a static cross-linked HTML archive of all sessions.
+# Back-compat module-level shim: existing call sites (and the pytest suite)
+# may still reach for _scan_session. Delegates to SessionScanner.
+def _scan_session(s, query, context, tools_only):
+    """Return (count, contexts) for one session. Thin wrapper over SessionScanner."""
+    return SessionScanner(query, context=context, tools_only=tools_only).scan(s)
 
-    Output tree:
-      <out>/index.html             — all sessions, live client-side search
-      <out>/search-index.json      — index data (also inlined into index.html)
-      <out>/sessions/<short>.html  — one page per session, with backlinks
+
+# ─── Exporters ───────────────────────────────────────────────────────────────
+
+class Exporter:
+    """Base class for session exporters.
+
+    Subclasses earn their existence by carrying the session + format options
+    as state and producing a format-specific string via format(). The base
+    class enforces the contract (format() must be overridden, extension is
+    declared).
     """
-    out_dir = Path(args.output) if args.output else (Path.home() / "claude-chat-wiki")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "sessions").mkdir(exist_ok=True)
 
-    sessions = find_all_sessions(args.project)
-    if not sessions:
-        print("No sessions found.")
-        return
+    extension = ""  # override in subclasses
 
-    print(f"Building wiki for {len(sessions)} session(s) -> {out_dir}")
+    def __init__(self, session, *, no_truncate=False, embedded=False, rich=False, diagrams=False):
+        self.session = session
+        self.no_truncate = no_truncate
+        self.embedded = embedded
+        self.rich = rich
+        self.diagrams = diagrams
 
-    # Pass 1 — parse all sessions, collect short_ids.
-    parsed = []
-    for s in sessions:
-        try:
-            s.parse()
-            parsed.append(s)
-        except (IOError, OSError):
-            continue
-    short_ids = {s.short_id for s in parsed}
-    short_id_re = re.compile(r"\b([0-9a-f]{8})\b", re.IGNORECASE)
-
-    # Pass 2 — backlink map: short_id -> set of session short_ids that mention it.
-    references = {sid: set() for sid in short_ids}
-    for s in parsed:
-        mentioned = set()
-        for m in s.messages:
-            if not m.text:
-                continue
-            for match in short_id_re.findall(m.text):
-                ml = match.lower()
-                if ml in short_ids and ml != s.short_id:
-                    mentioned.add(ml)
-        for sid in mentioned:
-            references[sid].add(s.short_id)
-
-    # Pass 3 — search index (capped body per session to bound JSON size).
-    BODY_CAP = 30000  # chars per session in the index
-    search_idx = []
-    for s in parsed:
-        body_chunks = []
-        running = 0
-        for m in s.messages:
-            if m.text:
-                body_chunks.append(m.text)
-                running += len(m.text)
-                if running > BODY_CAP:
-                    break
-            # Also surface tool-call inputs as searchable text.
-            for tc in m.tool_calls:
-                for _, val in _iter_tool_call_strings(tc):
-                    body_chunks.append(val)
-                    running += len(val)
-                    if running > BODY_CAP:
-                        break
-                if running > BODY_CAP:
-                    break
-        body = " ".join(body_chunks)
-        if len(body) > BODY_CAP:
-            body = body[:BODY_CAP]
-        search_idx.append({
-            "short_id": s.short_id,
-            "project": s.project,
-            "date": s.modified.strftime("%Y-%m-%d %H:%M"),
-            "size_kb": int(s.size / 1024),
-            "summary": s.summary(140),
-            "body": body,
-        })
-
-    # Write the separate JSON too (handy for programmatic use).
-    with open(out_dir / "search-index.json", "w", encoding="utf-8") as f:
-        json.dump(search_idx, f, separators=(",", ":"))
-    index_json_str = json.dumps(search_idx, separators=(",", ":"))
-    # Escape "</" so a literal "</script>" inside session data cannot terminate
-    # the surrounding <script> tag. JSON parsers accept "<\/". U+2028 / U+2029
-    # are already escaped by json.dumps (ensure_ascii=True by default).
-    index_json_str = index_json_str.replace("</", "<\\/")
-    total_mb = len(index_json_str) / (1024 * 1024)
-    print(f"  search index: {total_mb:.1f} MB")
-
-    # Pass 4 — per-session HTML pages.
-    for s in parsed:
-        html = export_html(s, embedded=True, rich=getattr(args, "rich", False))
-        # Re-target the embedded back-link.
-        html = html.replace('href="/"', 'href="../index.html"')
-        # Cross-link 8-char hex short_ids -> sibling session pages.
-        def linkify(match):
-            sid = match.group(1).lower()
-            if sid in short_ids and sid != s.short_id:
-                return f'<a class="xref" href="{sid}.html">{match.group(1)}</a>'
-            return match.group(1)
-        html = short_id_re.sub(linkify, html)
-        # Backlinks footer.
-        refs = sorted(references.get(s.short_id, set()))
-        if refs:
-            backlinks = (
-                '<div style="margin:24px 16px;padding:12px;border-top:1px solid #3e3e3e;'
-                'color:#888;font-size:13px"><strong>Referenced by:</strong> '
-                + " · ".join(f'<a href="{r}.html" style="color:#569cd6">{r}</a>' for r in refs)
-                + "</div>"
-            )
-            html = html.replace("</body>", backlinks + "</body>")
-        with open(out_dir / "sessions" / f"{s.short_id}.html", "w", encoding="utf-8") as f:
-            f.write(html)
-
-    # Pass 5 — index.html with inline JSON + live search.
-    index_html = WIKI_INDEX_TEMPLATE.replace("{{COUNT}}", str(len(parsed)))
-    index_html = index_html.replace("{{PROJECT_COUNT}}", str(len({s.project for s in parsed})))
-    index_html = index_html.replace("{{INDEX_JSON}}", index_json_str)
-    with open(out_dir / "index.html", "w", encoding="utf-8") as f:
-        f.write(index_html)
-
-    print(f"Wiki built: {out_dir}")
-    print(f"Open: {(out_dir / 'index.html').resolve()}")
-
-    if getattr(args, "open", False):
-        webbrowser.open(str((out_dir / "index.html").resolve()))
+    def format(self):
+        """Return the formatted session string. Subclasses must override."""
+        raise NotImplementedError
 
 
-def cmd_protect(args):
-    """Prevent Claude Code from auto-deleting old sessions."""
-    if not SETTINGS_FILE.exists():
-        settings = {}
-    else:
-        with open(SETTINGS_FILE, "r") as f:
-            settings = json.load(f)
-
-    current = settings.get("cleanupPeriodDays")
-    if current and current >= 99999:
-        print(f"Already protected (cleanupPeriodDays = {current}).")
-        return
-
-    if current:
-        print(f"WARNING: Current cleanupPeriodDays = {current}")
-        print(f"Sessions older than {current} days will be DELETED by Claude Code.")
-
-    settings["cleanupPeriodDays"] = 99999
-
-    # Atomic write: write to temp file, then rename (prevents corruption on crash)
-    tmp = SETTINGS_FILE.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(settings, f, indent=2)
-        f.write("\n")
-    tmp.replace(SETTINGS_FILE)
-
-    print(f"Protected. Set cleanupPeriodDays = 99999 in {SETTINGS_FILE}")
-    print("Your sessions will no longer be auto-deleted.")
-
-
-# ─── Export Formatters ───────────────────────────────────────────────────────
-
-def export_markdown(session, no_truncate=False):
-    """Export session as Markdown.
+class MarkdownExporter(Exporter):
+    """Markdown export.
 
     Tool-call inputs are truncated to 500 chars for readability by default;
     pass no_truncate=True for full content (needed for byte-perfect recovery
     of files edited via the Edit/Write tools).
     """
-    lines = [
-        f"# Claude Code Session: {session.short_id}",
-        f"",
-        f"**Date:** {session.modified.strftime('%Y-%m-%d %H:%M')}  ",
-        f"**Project:** {session.project}  ",
-        f"**Model:** {session.model or 'unknown'}  ",
-        f"**Size:** {session.size / 1024:.0f} KB  ",
-        f"",
-        f"---",
-        f"",
-    ]
 
-    for m in session.messages:
-        if not m.text and not m.tool_calls:
-            continue
+    extension = ".md"
 
-        if m.role == "user":
-            lines.append(f"## You\n")
+    def format(self):
+        session = self.session
+        lines = [
+            f"# Claude Code Session: {session.short_id}",
+            f"",
+            f"**Date:** {session.modified.strftime('%Y-%m-%d %H:%M')}  ",
+            f"**Project:** {session.project}  ",
+            f"**Model:** {session.model or 'unknown'}  ",
+            f"**Size:** {session.size / 1024:.0f} KB  ",
+            f"",
+            f"---",
+            f"",
+        ]
+
+        for m in session.messages:
+            if not m.text and not m.tool_calls:
+                continue
+
+            if m.role == "user":
+                lines.append(f"## You\n")
+                lines.append(m.text)
+                lines.append("")
+            elif m.role == "assistant":
+                lines.append(f"## Claude\n")
+                if m.text:
+                    lines.append(m.text)
+                for tc in m.tool_calls:
+                    input_str = json.dumps(tc.input_data, indent=2)
+                    if not self.no_truncate:
+                        input_str = input_str[:500]
+                    lines.append(f"\n<details><summary>Tool: {tc.summary()}</summary>\n")
+                    lines.append(f"```json\n{input_str}\n```")
+                    lines.append(f"</details>\n")
+                lines.append("")
+
+        lines.append(f"\n---\n*Exported with claude-chat v{__version__}*\n")
+        return "\n".join(lines)
+
+
+class TextExporter(Exporter):
+    """Plain text export."""
+
+    extension = ".txt"
+
+    def format(self):
+        session = self.session
+        lines = [
+            f"Claude Code Session: {session.short_id}",
+            f"Date: {session.modified.strftime('%Y-%m-%d %H:%M')}",
+            f"Project: {session.project}",
+            f"Model: {session.model or 'unknown'}",
+            f"{'=' * 60}",
+            "",
+        ]
+
+        for m in session.messages:
+            if not m.text:
+                continue
+            tag = "YOU" if m.role == "user" else "CLAUDE"
+            lines.append(f"[{tag}]")
             lines.append(m.text)
             lines.append("")
-        elif m.role == "assistant":
-            lines.append(f"## Claude\n")
-            if m.text:
-                lines.append(m.text)
-            for tc in m.tool_calls:
-                input_str = json.dumps(tc.input_data, indent=2)
-                if not no_truncate:
-                    input_str = input_str[:500]
-                lines.append(f"\n<details><summary>Tool: {tc.summary()}</summary>\n")
-                lines.append(f"```json\n{input_str}\n```")
-                lines.append(f"</details>\n")
+            lines.append("-" * 40)
             lines.append("")
 
-    lines.append(f"\n---\n*Exported with claude-chat v{__version__}*\n")
-    return "\n".join(lines)
+        return "\n".join(lines)
 
 
-def export_txt(session):
-    """Export session as plain text."""
-    lines = [
-        f"Claude Code Session: {session.short_id}",
-        f"Date: {session.modified.strftime('%Y-%m-%d %H:%M')}",
-        f"Project: {session.project}",
-        f"Model: {session.model or 'unknown'}",
-        f"{'=' * 60}",
-        "",
-    ]
+class TeXExporter(Exporter):
+    """LaTeX export."""
 
-    for m in session.messages:
-        if not m.text:
-            continue
-        tag = "YOU" if m.role == "user" else "CLAUDE"
-        lines.append(f"[{tag}]")
-        lines.append(m.text)
-        lines.append("")
-        lines.append("-" * 40)
-        lines.append("")
+    extension = ".tex"
 
-    return "\n".join(lines)
-
-
-def export_tex(session):
-    """Export session as LaTeX."""
-    def tex_escape(text):
+    @staticmethod
+    def _tex_escape(text):
         # Single-pass replacement to avoid double-escaping (backslash must not
         # be replaced sequentially after other replacements introduce backslashes)
         conv = {
@@ -1232,242 +668,265 @@ def export_tex(session):
         pattern = re.compile("|".join(re.escape(k) for k in conv))
         return pattern.sub(lambda m: conv[m.group()], text)
 
-    lines = [
-        r"\documentclass[11pt,a4paper]{article}",
-        r"\usepackage[utf8]{inputenc}",
-        r"\usepackage[T1]{fontenc}",
-        r"\usepackage{listings}",
-        r"\usepackage[margin=2.5cm]{geometry}",
-        r"\usepackage{xcolor}",
-        r"\definecolor{usercolor}{RGB}{0,100,200}",
-        r"\definecolor{aicolor}{RGB}{100,100,100}",
-        r"\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,backgroundcolor=\color{gray!10}}",
-        r"",
-        r"\title{Claude Code Session: " + tex_escape(session.short_id) + r"}",
-        r"\date{" + session.modified.strftime('%Y-%m-%d %H:%M') + r"}",
-        r"\author{Project: " + tex_escape(session.project[:40]) + r"}",
-        r"",
-        r"\begin{document}",
-        r"\maketitle",
-        r"",
-    ]
+    def format(self):
+        session = self.session
+        tex_escape = self._tex_escape
 
-    for m in session.messages:
-        if not m.text:
-            continue
+        lines = [
+            r"\documentclass[11pt,a4paper]{article}",
+            r"\usepackage[utf8]{inputenc}",
+            r"\usepackage[T1]{fontenc}",
+            r"\usepackage{listings}",
+            r"\usepackage[margin=2.5cm]{geometry}",
+            r"\usepackage{xcolor}",
+            r"\definecolor{usercolor}{RGB}{0,100,200}",
+            r"\definecolor{aicolor}{RGB}{100,100,100}",
+            r"\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,backgroundcolor=\color{gray!10}}",
+            r"",
+            r"\title{Claude Code Session: " + tex_escape(session.short_id) + r"}",
+            r"\date{" + session.modified.strftime('%Y-%m-%d %H:%M') + r"}",
+            r"\author{Project: " + tex_escape(session.project[:40]) + r"}",
+            r"",
+            r"\begin{document}",
+            r"\maketitle",
+            r"",
+        ]
 
-        if m.role == "user":
-            lines.append(r"\subsection*{\textcolor{usercolor}{You}}")
-        else:
-            lines.append(r"\subsection*{\textcolor{aicolor}{Claude}}")
+        for m in session.messages:
+            if not m.text:
+                continue
 
-        # Handle code blocks specially
-        parts = re.split(r"(```\w*\n.*?```)", m.text, flags=re.DOTALL)
-        for part in parts:
-            code_match = re.match(r"```(\w*)\n(.*?)```", part, re.DOTALL)
-            if code_match:
-                lang = code_match.group(1) or "text"
-                code = code_match.group(2)
-                lines.append(r"\begin{lstlisting}[language=" + lang + "]")
-                lines.append(code)
-                lines.append(r"\end{lstlisting}")
+            if m.role == "user":
+                lines.append(r"\subsection*{\textcolor{usercolor}{You}}")
             else:
-                if part.strip():
-                    lines.append(tex_escape(part.strip()))
-                    lines.append("")
+                lines.append(r"\subsection*{\textcolor{aicolor}{Claude}}")
 
-    lines.append(r"\end{document}")
-    return "\n".join(lines)
+            # Handle code blocks specially
+            parts = re.split(r"(```\w*\n.*?```)", m.text, flags=re.DOTALL)
+            for part in parts:
+                code_match = re.match(r"```(\w*)\n(.*?)```", part, re.DOTALL)
+                if code_match:
+                    lang = code_match.group(1) or "text"
+                    code = code_match.group(2)
+                    lines.append(r"\begin{lstlisting}[language=" + lang + "]")
+                    lines.append(code)
+                    lines.append(r"\end{lstlisting}")
+                else:
+                    if part.strip():
+                        lines.append(tex_escape(part.strip()))
+                        lines.append("")
 
-
-def _md_table_to_html(text):
-    """Convert markdown tables to HTML tables."""
-    lines = text.split("\n")
-    result = []
-    table_lines = []
-    in_table = False
-
-    for line in lines:
-        stripped = line.strip()
-        # Detect table row: starts/ends with | and has content
-        if stripped.startswith("|") and stripped.endswith("|") and len(stripped) > 2:
-            table_lines.append(stripped)
-            in_table = True
-        else:
-            if in_table and table_lines:
-                result.append(_render_table(table_lines))
-                table_lines = []
-                in_table = False
-            result.append(line)
-
-    if table_lines:
-        result.append(_render_table(table_lines))
-
-    return "\n".join(result)
-
-
-def _render_table(lines):
-    """Render collected markdown table lines as HTML."""
-    if len(lines) < 2:
+        lines.append(r"\end{document}")
         return "\n".join(lines)
 
-    rows = []
-    for i, line in enumerate(lines):
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        # Skip separator row (---|---|---)
-        if all(re.match(r"^:?-+:?$", c.strip()) for c in cells if c.strip()):
-            continue
-        rows.append(cells)
 
-    if not rows:
-        return "\n".join(lines)
+class HTMLExporter(Exporter):
+    """HTML export with dark theme, optional rich rendering + diagrams.
 
-    html = '<table class="md-table">'
-    # First row is header
-    html += "<thead><tr>"
-    for cell in rows[0]:
-        html += f"<th>{cell}</th>"
-    html += "</tr></thead><tbody>"
-    for row in rows[1:]:
-        html += "<tr>"
-        for cell in row:
-            html += f"<td>{cell}</td>"
-        html += "</tr>"
-    html += "</tbody></table>"
-    return html
-
-
-def _auto_link_urls(text):
-    """Convert plain URLs to clickable links (skip already-linked ones)."""
-    return re.sub(
-        r'(?<!href=")(?<!src=")(https?://[^\s<>")\]]+)',
-        r'<a href="\1" target="_blank" rel="noopener">\1</a>',
-        text
-    )
-
-
-def _build_sequence_diagram(session):
-    """Build a mermaid sequenceDiagram from session tool calls.
-
-    Participants: Claude + one per distinct tool name (in first-seen order).
-    Events: one arrow per tool call in conversation order.
-    Returns "" if the session has no tool calls.
+    The rich-text helpers (_md_table_to_html, _render_table, _auto_link_urls,
+    _build_sequence_diagram) live here as static methods because HTML is the
+    only consumer that benefits from markdown→HTML or mermaid translation.
     """
-    tool_names = []
-    seen = set()
-    events = []
-    for m in session.messages:
-        if m.role != "assistant" or not m.tool_calls:
-            continue
-        for tc in m.tool_calls:
-            name = (tc.name or "Tool").strip()
-            if name not in seen:
-                seen.add(name)
-                tool_names.append(name)
-            summary = tc.summary() or name
-            s = summary
-            if s.startswith(name + ":"):
-                s = s[len(name) + 1:].strip()
-            elif s.startswith(name):
-                s = s[len(name):].lstrip(" :-")
-            s = s.replace("\r", " ").replace("\n", " ")
-            if len(s) > 60:
-                s = s[:57] + "..."
-            s = s.replace(";", ",").replace("#", "&#35;")
-            s = s.replace("<", "&lt;").replace(">", "&gt;")
-            if not s:
-                s = name
-            events.append((name, s))
-    if not events:
-        return ""
 
-    def pid(n):
-        safe = re.sub(r"\W+", "_", n).strip("_")
-        return safe or "T"
+    extension = ".html"
 
-    lines = ["sequenceDiagram", "    participant C as Claude"]
-    for n in tool_names:
-        lines.append(f'    participant {pid(n)} as {n}')
-    for name, s in events:
-        lines.append(f"    C->>{pid(name)}: {s}")
-    return "\n".join(lines)
+    # ─── Rich-text helpers (HTML-only) ──────────────────────────────────────
 
+    @staticmethod
+    def _md_table_to_html(text):
+        """Convert markdown tables to HTML tables."""
+        lines = text.split("\n")
+        result = []
+        table_lines = []
+        in_table = False
 
-def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate=False):
-    """Export session as HTML with dark theme."""
-    messages_html = []
+        for line in lines:
+            stripped = line.strip()
+            # Detect table row: starts/ends with | and has content
+            if stripped.startswith("|") and stripped.endswith("|") and len(stripped) > 2:
+                table_lines.append(stripped)
+                in_table = True
+            else:
+                if in_table and table_lines:
+                    result.append(HTMLExporter._render_table(table_lines))
+                    table_lines = []
+                    in_table = False
+                result.append(line)
 
-    for m in session.messages:
-        if not m.text and not m.tool_calls:
-            continue
+        if table_lines:
+            result.append(HTMLExporter._render_table(table_lines))
 
-        role_class = "user" if m.role == "user" else "assistant"
-        role_label = "You" if m.role == "user" else "Claude"
+        return "\n".join(result)
 
-        # Process text: escape HTML, then restore code blocks
-        if m.text:
-            text = html_mod.escape(m.text)
-            # Restore code blocks with syntax highlighting
-            def code_replacer(match):
-                lang = match.group(1)
-                code = match.group(2)
-                return f'<pre><code class="language-{lang}">{code}</code></pre>'
-            text = re.sub(
-                r"```(\w*)\n(.*?)```",
-                code_replacer,
-                text,
-                flags=re.DOTALL
-            )
+    @staticmethod
+    def _render_table(lines):
+        """Render collected markdown table lines as HTML."""
+        if len(lines) < 2:
+            return "\n".join(lines)
 
-            if rich:
-                # Markdown tables → HTML tables (before <br> conversion)
-                text = _md_table_to_html(text)
-                # Markdown headings
-                text = re.sub(r"^(#{1,6})\s+(.+)$", lambda m: f'<h{len(m.group(1))} class="md-heading">{m.group(2)}</h{len(m.group(1))}>', text, flags=re.MULTILINE)
-                # Math: $$...$$ display math (before inline to avoid conflicts)
-                text = re.sub(r"\$\$(.+?)\$\$", r'<span class="katex-display">\1</span>', text, flags=re.DOTALL)
-                # Math: $...$ inline math (not preceded/followed by space+digit pattern that looks like prices)
-                text = re.sub(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", r'<span class="katex-inline">\1</span>', text)
+        rows = []
+        for i, line in enumerate(lines):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            # Skip separator row (---|---|---)
+            if all(re.match(r"^:?-+:?$", c.strip()) for c in cells if c.strip()):
+                continue
+            rows.append(cells)
 
-            # Convert markdown bold/italic
-            text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-            text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
-            # Convert newlines to <br> (outside of pre blocks)
-            text = re.sub(r"\n(?!<)", "<br>\n", text)
+        if not rows:
+            return "\n".join(lines)
 
-            if rich:
-                # Auto-link URLs (after all other processing)
-                text = _auto_link_urls(text)
-        else:
-            text = ""
+        html = '<table class="md-table">'
+        # First row is header
+        html += "<thead><tr>"
+        for cell in rows[0]:
+            html += f"<th>{cell}</th>"
+        html += "</tr></thead><tbody>"
+        for row in rows[1:]:
+            html += "<tr>"
+            for cell in row:
+                html += f"<td>{cell}</td>"
+            html += "</tr>"
+        html += "</tbody></table>"
+        return html
 
-        # Tool calls
-        tools_html = ""
-        if m.tool_calls:
+    @staticmethod
+    def _auto_link_urls(text):
+        """Convert plain URLs to clickable links (skip already-linked ones)."""
+        return re.sub(
+            r'(?<!href=")(?<!src=")(https?://[^\s<>")\]]+)',
+            r'<a href="\1" target="_blank" rel="noopener">\1</a>',
+            text
+        )
+
+    @staticmethod
+    def _build_sequence_diagram(session):
+        """Build a mermaid sequenceDiagram from session tool calls.
+
+        Participants: Claude + one per distinct tool name (in first-seen order).
+        Events: one arrow per tool call in conversation order.
+        Returns "" if the session has no tool calls.
+        """
+        tool_names = []
+        seen = set()
+        events = []
+        for m in session.messages:
+            if m.role != "assistant" or not m.tool_calls:
+                continue
             for tc in m.tool_calls:
-                input_preview = json.dumps(tc.input_data, indent=2)
-                if not no_truncate:
-                    input_preview = input_preview[:400]
-                tools_html += f"""
+                name = (tc.name or "Tool").strip()
+                if name not in seen:
+                    seen.add(name)
+                    tool_names.append(name)
+                summary = tc.summary() or name
+                s = summary
+                if s.startswith(name + ":"):
+                    s = s[len(name) + 1:].strip()
+                elif s.startswith(name):
+                    s = s[len(name):].lstrip(" :-")
+                s = s.replace("\r", " ").replace("\n", " ")
+                if len(s) > 60:
+                    s = s[:57] + "..."
+                s = s.replace(";", ",").replace("#", "&#35;")
+                s = s.replace("<", "&lt;").replace(">", "&gt;")
+                if not s:
+                    s = name
+                events.append((name, s))
+        if not events:
+            return ""
+
+        def pid(n):
+            safe = re.sub(r"\W+", "_", n).strip("_")
+            return safe or "T"
+
+        lines = ["sequenceDiagram", "    participant C as Claude"]
+        for n in tool_names:
+            lines.append(f'    participant {pid(n)} as {n}')
+        for name, s in events:
+            lines.append(f"    C->>{pid(name)}: {s}")
+        return "\n".join(lines)
+
+    # ─── format() ───────────────────────────────────────────────────────────
+
+    def format(self):
+        session = self.session
+        embedded = self.embedded
+        rich = self.rich
+        diagrams = self.diagrams
+        no_truncate = self.no_truncate
+
+        messages_html = []
+
+        for m in session.messages:
+            if not m.text and not m.tool_calls:
+                continue
+
+            role_class = "user" if m.role == "user" else "assistant"
+            role_label = "You" if m.role == "user" else "Claude"
+
+            # Process text: escape HTML, then restore code blocks
+            if m.text:
+                text = html_mod.escape(m.text)
+                # Restore code blocks with syntax highlighting
+                def code_replacer(match):
+                    lang = match.group(1)
+                    code = match.group(2)
+                    return f'<pre><code class="language-{lang}">{code}</code></pre>'
+                text = re.sub(
+                    r"```(\w*)\n(.*?)```",
+                    code_replacer,
+                    text,
+                    flags=re.DOTALL
+                )
+
+                if rich:
+                    # Markdown tables → HTML tables (before <br> conversion)
+                    text = self._md_table_to_html(text)
+                    # Markdown headings
+                    text = re.sub(r"^(#{1,6})\s+(.+)$", lambda m: f'<h{len(m.group(1))} class="md-heading">{m.group(2)}</h{len(m.group(1))}>', text, flags=re.MULTILINE)
+                    # Math: $$...$$ display math (before inline to avoid conflicts)
+                    text = re.sub(r"\$\$(.+?)\$\$", r'<span class="katex-display">\1</span>', text, flags=re.DOTALL)
+                    # Math: $...$ inline math (not preceded/followed by space+digit pattern that looks like prices)
+                    text = re.sub(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", r'<span class="katex-inline">\1</span>', text)
+
+                # Convert markdown bold/italic
+                text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+                text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
+                # Convert newlines to <br> (outside of pre blocks)
+                text = re.sub(r"\n(?!<)", "<br>\n", text)
+
+                if rich:
+                    # Auto-link URLs (after all other processing)
+                    text = self._auto_link_urls(text)
+            else:
+                text = ""
+
+            # Tool calls
+            tools_html = ""
+            if m.tool_calls:
+                for tc in m.tool_calls:
+                    input_preview = json.dumps(tc.input_data, indent=2)
+                    if not no_truncate:
+                        input_preview = input_preview[:400]
+                    tools_html += f"""
                 <details class="tool-call">
                     <summary>{html_mod.escape(tc.summary())}</summary>
                     <pre>{html_mod.escape(input_preview)}</pre>
                 </details>"""
 
-        messages_html.append(f"""
+            messages_html.append(f"""
         <div class="message {role_class}">
             <div class="role-label">{role_label}</div>
             <div class="content">{text}{tools_html}</div>
         </div>""")
 
-    nav = ""
-    if embedded:
-        nav = '<div class="nav"><a href="/">Back to all sessions</a></div>'
+        nav = ""
+        if embedded:
+            nav = '<div class="nav"><a href="/">Back to all sessions</a></div>'
 
-    rich_head = ""
-    rich_foot = ""
-    if rich:
-        rich_head = """
+        rich_head = ""
+        rich_foot = ""
+        if rich:
+            rich_head = """
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <style>
@@ -1486,7 +945,7 @@ h4.md-heading { font-size: 1.0em; }
 .content a:hover { color: var(--green); }
 .katex-display { display: block; text-align: center; margin: 12px 0; }
 </style>"""
-        rich_foot = """
+            rich_foot = """
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     document.querySelectorAll(".katex-display").forEach(function(el) {
@@ -1498,30 +957,30 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>"""
 
-    diagrams_head = ""
-    diagrams_foot = ""
-    diagram_block = ""
-    if diagrams:
-        seq = _build_sequence_diagram(session)
-        if seq:
-            diagram_block = (
-                '<details class="diagram-block" open>'
-                '<summary>Tool-call sequence</summary>'
-                '<div class="diagram-stage">'
-                '<div class="diagram-controls">'
-                '<button type="button" data-zoom="in" title="Zoom in">+</button>'
-                '<button type="button" data-zoom="out" title="Zoom out">\u2212</button>'
-                '<button type="button" data-zoom="reset" title="Reset view">Reset</button>'
-                '<button type="button" data-zoom="full" title="Toggle fullscreen (Esc to exit)">\u26F6 Full</button>'
-                '<span class="diagram-hint">drag to pan &middot; scroll / pinch to zoom</span>'
-                '</div>'
-                '<div class="diagram-viewport">'
-                '<pre class="mermaid">\n' + seq + '\n</pre>'
-                '</div>'
-                '</div>'
-                '</details>'
-            )
-        diagrams_head = """
+        diagrams_head = ""
+        diagrams_foot = ""
+        diagram_block = ""
+        if diagrams:
+            seq = self._build_sequence_diagram(session)
+            if seq:
+                diagram_block = (
+                    '<details class="diagram-block" open>'
+                    '<summary>Tool-call sequence</summary>'
+                    '<div class="diagram-stage">'
+                    '<div class="diagram-controls">'
+                    '<button type="button" data-zoom="in" title="Zoom in">+</button>'
+                    '<button type="button" data-zoom="out" title="Zoom out">−</button>'
+                    '<button type="button" data-zoom="reset" title="Reset view">Reset</button>'
+                    '<button type="button" data-zoom="full" title="Toggle fullscreen (Esc to exit)">⛶ Full</button>'
+                    '<span class="diagram-hint">drag to pan &middot; scroll / pinch to zoom</span>'
+                    '</div>'
+                    '<div class="diagram-viewport">'
+                    '<pre class="mermaid">\n' + seq + '\n</pre>'
+                    '</div>'
+                    '</div>'
+                    '</details>'
+                )
+            diagrams_head = """
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
 <style>
@@ -1567,7 +1026,7 @@ document.addEventListener("DOMContentLoaded", function() {
     display: block;
 }
 </style>"""
-        diagrams_foot = """
+            diagrams_foot = """
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     if (!window.mermaid) return;
@@ -1608,20 +1067,882 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>"""
 
-    result = HTML_TEMPLATE.replace("{{MESSAGES}}", "\n".join(messages_html)) \
-        .replace("{{SESSION_ID}}", session.short_id) \
-        .replace("{{DATE}}", session.modified.strftime("%Y-%m-%d %H:%M")) \
-        .replace("{{PROJECT}}", html_mod.escape(session.project)) \
-        .replace("{{MODEL}}", html_mod.escape(session.model or "unknown")) \
-        .replace("{{SIZE}}", f"{session.size / 1024:.0f} KB") \
-        .replace("{{MSG_COUNT}}", str(len(session.messages))) \
-        .replace("{{NAV}}", nav) \
-        .replace("{{RICH_HEAD}}", rich_head) \
-        .replace("{{RICH_FOOT}}", rich_foot) \
-        .replace("{{DIAGRAMS_HEAD}}", diagrams_head) \
-        .replace("{{DIAGRAM_BLOCK}}", diagram_block) \
-        .replace("{{DIAGRAMS_FOOT}}", diagrams_foot)
-    return result
+        result = HTML_TEMPLATE.replace("{{MESSAGES}}", "\n".join(messages_html)) \
+            .replace("{{SESSION_ID}}", session.short_id) \
+            .replace("{{DATE}}", session.modified.strftime("%Y-%m-%d %H:%M")) \
+            .replace("{{PROJECT}}", html_mod.escape(session.project)) \
+            .replace("{{MODEL}}", html_mod.escape(session.model or "unknown")) \
+            .replace("{{SIZE}}", f"{session.size / 1024:.0f} KB") \
+            .replace("{{MSG_COUNT}}", str(len(session.messages))) \
+            .replace("{{NAV}}", nav) \
+            .replace("{{RICH_HEAD}}", rich_head) \
+            .replace("{{RICH_FOOT}}", rich_foot) \
+            .replace("{{DIAGRAMS_HEAD}}", diagrams_head) \
+            .replace("{{DIAGRAM_BLOCK}}", diagram_block) \
+            .replace("{{DIAGRAMS_FOOT}}", diagrams_foot)
+        return result
+
+
+EXPORTER_REGISTRY = {
+    "md": MarkdownExporter,
+    "html": HTMLExporter,
+    "txt": TextExporter,
+    "tex": TeXExporter,
+}
+
+
+# Back-compat module-level shims for the existing pytest suite and any
+# downstream callers that import these names directly. Each is a thin wrapper
+# over the corresponding Exporter or HTMLExporter static method.
+
+def export_markdown(session, no_truncate=False):
+    """Export session as Markdown. Thin wrapper over MarkdownExporter."""
+    return MarkdownExporter(session, no_truncate=no_truncate).format()
+
+
+def export_txt(session):
+    """Export session as plain text. Thin wrapper over TextExporter."""
+    return TextExporter(session).format()
+
+
+def export_tex(session):
+    """Export session as LaTeX. Thin wrapper over TeXExporter."""
+    return TeXExporter(session).format()
+
+
+def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate=False):
+    """Export session as HTML. Thin wrapper over HTMLExporter."""
+    return HTMLExporter(
+        session,
+        embedded=embedded,
+        rich=rich,
+        diagrams=diagrams,
+        no_truncate=no_truncate,
+    ).format()
+
+
+def _md_table_to_html(text):
+    return HTMLExporter._md_table_to_html(text)
+
+
+def _render_table(lines):
+    return HTMLExporter._render_table(lines)
+
+
+def _auto_link_urls(text):
+    return HTMLExporter._auto_link_urls(text)
+
+
+def _build_sequence_diagram(session):
+    return HTMLExporter._build_sequence_diagram(session)
+
+
+# ─── Commands ────────────────────────────────────────────────────────────────
+
+class Command:
+    """Base class for CLI commands.
+
+    Earns existence: holds the parsed argparse Namespace as state, and
+    declares a contract (execute() must be implemented, name+aliases declared
+    for registry dispatch). The argparse Namespace IS the per-invocation
+    state that execute() reads to do its work — class invariant: args is
+    always set at construction time.
+    """
+
+    name = ""              # override: matches argparse subcommand
+    aliases = ()           # override: list of alternate names
+
+    def __init__(self, args):
+        self.args = args
+
+    def execute(self):
+        """Run the command. Subclasses must override."""
+        raise NotImplementedError
+
+
+class ListCommand(Command):
+    """List all sessions with summaries."""
+
+    name = "list"
+    aliases = ("ls",)
+
+    def execute(self):
+        args = self.args
+        sessions = find_all_sessions(args.project)
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        limit = args.limit or 20
+        detail = getattr(args, "detail", False)
+        interactive = getattr(args, "_interactive", False)
+        current_project = None
+
+        shown = sessions[:limit]
+        if interactive:
+            _interactive_index.clear()
+            _interactive_index.extend(shown)
+
+        for i, s in enumerate(shown, start=1):
+            if s.project != current_project:
+                current_project = s.project
+                print(f"\n  {current_project}")
+                print(f"  {'─' * min(60, len(current_project))}")
+
+            age = datetime.now() - s.modified
+            if age.days > 0:
+                age_str = f"{age.days}d ago"
+            elif age.seconds > 3600:
+                age_str = f"{age.seconds // 3600}h ago"
+            else:
+                age_str = f"{age.seconds // 60}m ago"
+
+            size_kb = s.size / 1024
+            summary = s.summary(80)
+            num = f"[{i:>3}] " if interactive else ""
+            tag = "  >sub " if s.is_subagent else "       "
+            print(f"  {num}{s.short_id}{tag}{s.modified.strftime('%Y-%m-%d %H:%M')}  {size_kb:6.0f}KB  {age_str:>8}  {summary}")
+
+            if detail:
+                previews = _session_preview(s)
+                for p in previews:
+                    print(f"              > {p}")
+                if previews:
+                    print()
+
+        total = len(sessions)
+        if total > limit:
+            print(f"\n  ... and {total - limit} more. Use --limit {total} to see all.")
+        print(f"\n  Total: {total} sessions across {len(set(s.project for s in sessions))} project(s)")
+        if interactive:
+            print(f"  Tip: use the number, e.g. `export 1 --format html` or `open 2`")
+
+
+class SearchCommand(Command):
+    """Search across all conversations (or within a single session via --in)."""
+
+    name = "search"
+    aliases = ("grep", "find")
+
+    def execute(self):
+        args = self.args
+        query = args.query.lower()
+        context = max(0, getattr(args, "context", 40))
+        in_session_id = getattr(args, "in_session", None)
+        tools_only = getattr(args, "tools", False)
+
+        scanner = SessionScanner(query, context=context, tools_only=tools_only)
+
+        # Source of sessions
+        if in_session_id:
+            target = find_session(in_session_id)
+            if not target:
+                print(f"Session not found: {in_session_id}")
+                print("Use 'claude-chat.py list' to see available sessions.")
+                return
+            sessions = [target]
+        else:
+            sessions = find_all_sessions(args.project)
+
+        results = []
+        for s in sessions:
+            try:
+                s.parse()
+                count, contexts = scanner.scan(s)
+                if count > 0:
+                    results.append((s, count, contexts))
+            except (IOError, OSError):
+                continue
+
+        if not results:
+            field_tag = " in tool calls" if tools_only else ""
+            print(f'No results for "{args.query}"{field_tag}')
+            # Project-miss suggestion: filter was set, no hits in that project — check elsewhere.
+            if args.project and not in_session_id:
+                other_projects = {}
+                for s in find_all_sessions(None):
+                    if args.project.lower() in s.project.lower():
+                        continue  # already searched
+                    try:
+                        s.parse()
+                        c, _ = scanner.scan(s)
+                        if c > 0:
+                            other_projects[s.project] = other_projects.get(s.project, 0) + c
+                    except (IOError, OSError):
+                        continue
+                if other_projects:
+                    print(f"\nDid you mean a different project? Matches outside '--project {args.project}':")
+                    for p, n in sorted(other_projects.items(), key=lambda x: -x[1])[:5]:
+                        print(f"  --project {p}  ({n} match(es))")
+            return
+
+        results.sort(key=lambda r: r[1], reverse=True)
+        field_tag = " (tool-call inputs)" if tools_only else ""
+        if in_session_id:
+            s = results[0][0]
+            print(f'Found "{args.query}" in session {s.short_id}{field_tag} — {results[0][1]} match(es):\n')
+        else:
+            print(f'Found "{args.query}" in {len(results)} session(s){field_tag}:\n')
+
+        # When scoped to one session, show all matches; otherwise summarize per-session.
+        preview_limit = 50 if in_session_id else 3
+
+        for s, count, contexts in results[:args.limit or 20]:
+            if not in_session_id:
+                print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {count} matches  [{s.project}]")
+            for role, snippet in contexts[:preview_limit]:
+                role_tag = "YOU" if role == "user" else "AI "
+                print(f"    {role_tag}: {snippet}")
+            if len(contexts) > preview_limit:
+                print(f"    ... and {len(contexts) - preview_limit} more matches")
+            print()
+
+        print("Tip: `export <id> --format md` for human-reading (tool inputs truncated at 500 chars).")
+        print("     `export <id> --format md --no-truncate` for byte-perfect file/edit recovery.")
+
+
+class ExportCommand(Command):
+    """Export a session to various formats."""
+
+    name = "export"
+    aliases = ()
+
+    def execute(self):
+        args = self.args
+
+        session = self._resolve_session()
+        if session is None:
+            return
+
+        session.parse()
+        fmt = args.format or "md"
+        out_dir = Path(args.output) if args.output else Path(".")
+        no_truncate = getattr(args, "no_truncate", False)
+
+        exporter_cls = EXPORTER_REGISTRY.get(fmt)
+        if exporter_cls is None:
+            print(f"Unknown format: {fmt}. Use: md, html, txt, tex")
+            return
+
+        exporter = exporter_cls(
+            session,
+            no_truncate=no_truncate,
+            rich=getattr(args, "rich", False),
+            diagrams=getattr(args, "diagrams", False),
+        )
+        content = exporter.format()
+        ext = exporter_cls.extension
+
+        filename = f"claude-chat_{session.short_id}_{session.modified.strftime('%Y%m%d')}{ext}"
+        out_path = out_dir / filename
+
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        print(f"Exported to: {out_path}")
+
+        if args.open:
+            webbrowser.open(str(out_path.resolve()))
+
+    def _resolve_session(self):
+        """Resolve session from --file or session_id arg. Returns Session or None on error (prints message)."""
+        args = self.args
+        if getattr(args, "file", None):
+            if args.session_id:
+                print("Pass either session_id OR --file, not both.")
+                return None
+            file_path = Path(args.file)
+            if not file_path.is_file():
+                print(f"File not found: {file_path}")
+                return None
+            return Session(file_path)
+
+        if not args.session_id:
+            print("Provide a session_id or use --file <path>.")
+            return None
+        session = find_session(args.session_id)
+        if not session:
+            print(f"Session not found: {args.session_id}")
+            print("Use 'claude-chat.py list' to see available sessions.")
+            return None
+        return session
+
+
+class BackupCommand(Command):
+    """Backup sessions with optional watch mode."""
+
+    name = "backup"
+    aliases = ()
+
+    def execute(self):
+        args = self.args
+        backup_dir = Path(args.output) if args.output else BACKUP_DIR
+        sessions = find_all_sessions(args.project)
+
+        if args.watch:
+            print(f"=== Claude Chat Backup Watcher ===")
+            print(f"Backup dir:    {backup_dir}")
+            print(f"Poll interval: {args.interval}s")
+            print(f"Projects:      {len(set(s.project for s in sessions))}")
+            print(f"\nInitial backup...")
+
+        # State carried across watch loop iterations.
+        self._file_states = {}
+        self._backed_up = 0
+        self._backup_dir = backup_dir
+
+        self._do_backup()
+        print(f"  {self._backed_up} session(s) backed up to {backup_dir}")
+
+        if args.watch:
+            print(f"\nWatching for changes (Ctrl+C to stop)...\n")
+            try:
+                while True:
+                    time.sleep(args.interval)
+                    n = self._do_backup()
+                    if n:
+                        print(f"  [{datetime.now().strftime('%H:%M:%S')}] {n} file(s) updated")
+            except KeyboardInterrupt:
+                print(f"\nStopped. Total backed up: {self._backed_up}")
+
+    def _do_backup(self):
+        """One pass: copy changed sessions, prune old per-session backups."""
+        count = 0
+        for s in find_all_sessions(self.args.project):
+            key = str(s.path)
+            current = (s.size, s._stat.st_mtime)
+            if key not in self._file_states or self._file_states[key] != current:
+                self._file_states[key] = current
+                project_backup = self._backup_dir / s.project
+                project_backup.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                dest = project_backup / f"{s.short_id}_{ts}.jsonl"
+                shutil.copy2(s.path, dest)
+                size_kb = dest.stat().st_size / 1024
+                print(f"  [BACKUP] {s.short_id} -> {dest.name} ({size_kb:.0f} KB)")
+
+                # Prune old backups
+                old = sorted(project_backup.glob(f"{s.short_id}_*.jsonl"),
+                             key=lambda f: f.stat().st_mtime, reverse=True)
+                for f in old[5:]:
+                    f.unlink()
+                count += 1
+                self._backed_up += 1
+        return count
+
+
+class StatsCommand(Command):
+    """Show usage statistics."""
+
+    name = "stats"
+    aliases = ()
+
+    def execute(self):
+        args = self.args
+        sessions = find_all_sessions(args.project)
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        total_size = sum(s.size for s in sessions)
+        projects = set(s.project for s in sessions)
+
+        # Parse a sample for deeper stats
+        total_user_msgs = 0
+        total_asst_msgs = 0
+        total_tool_calls = 0
+        total_code_blocks = 0
+        models_used = {}
+        oldest = min(s.modified for s in sessions)
+        newest = max(s.modified for s in sessions)
+
+        print(f"Analyzing {len(sessions)} sessions...")
+        for s in sessions:
+            s.parse()
+            for m in s.messages:
+                if m.role == "user":
+                    total_user_msgs += 1
+                elif m.role == "assistant":
+                    total_asst_msgs += 1
+                    total_tool_calls += len(m.tool_calls)
+            total_code_blocks += len(s.code_blocks())
+            if s.model:
+                models_used[s.model] = models_used.get(s.model, 0) + 1
+
+        days_span = max(1, (newest - oldest).days)
+
+        print(f"\n{'=' * 50}")
+        print(f"  Claude Code Chat Statistics")
+        print(f"{'=' * 50}")
+        print(f"  Sessions:        {len(sessions)}")
+        print(f"  Projects:        {len(projects)}")
+        print(f"  Date range:      {oldest.strftime('%Y-%m-%d')} to {newest.strftime('%Y-%m-%d')} ({days_span} days)")
+        print(f"  Total size:      {total_size / (1024*1024):.1f} MB")
+        print(f"  Avg session:     {total_size / (1024 * len(sessions)):.0f} KB")
+        print(f"")
+        print(f"  Your messages:   {total_user_msgs}")
+        print(f"  AI responses:    {total_asst_msgs}")
+        print(f"  Tool calls:      {total_tool_calls}")
+        print(f"  Code blocks:     {total_code_blocks}")
+        print(f"  Msgs/day:        {(total_user_msgs + total_asst_msgs) / days_span:.1f}")
+        print(f"  Sessions/day:    {len(sessions) / days_span:.1f}")
+
+        if models_used:
+            print(f"\n  Models:")
+            for model, count in sorted(models_used.items(), key=lambda x: -x[1]):
+                print(f"    {model}: {count} session(s)")
+
+        # Top sessions by size
+        print(f"\n  Largest sessions:")
+        for s in sorted(sessions, key=lambda s: s.size, reverse=True)[:5]:
+            print(f"    {s.short_id}  {s.size/1024:.0f}KB  {s.modified.strftime('%Y-%m-%d')}  {s.summary(50)}")
+
+        # Project breakdown
+        print(f"\n  Projects:")
+        for p in sorted(projects):
+            p_sessions = [s for s in sessions if s.project == p]
+            p_size = sum(s.size for s in p_sessions)
+            print(f"    {p[:50]}  {len(p_sessions)} sessions  {p_size/(1024*1024):.1f}MB")
+
+
+class ExtractCommand(Command):
+    """Extract specific content from a session."""
+
+    name = "extract"
+    aliases = ()
+
+    def execute(self):
+        args = self.args
+        session = find_session(args.session_id)
+        if not session:
+            print(f"Session not found: {args.session_id}")
+            return
+
+        session.parse()
+
+        if args.code:
+            self._extract_code(session)
+        elif args.ideas:
+            self._extract_ideas(session)
+        elif args.decisions:
+            self._extract_decisions(session)
+        else:
+            print("Specify what to extract: --code, --ideas, or --decisions")
+
+    @staticmethod
+    def _extract_code(session):
+        blocks = session.code_blocks()
+        if not blocks:
+            print("No code blocks found.")
+            return
+        print(f"Found {len(blocks)} code block(s):\n")
+        for i, b in enumerate(blocks, 1):
+            who = "You" if b["role"] == "user" else "AI"
+            print(f"--- Block {i} ({b['lang']}, {who}) ---")
+            print(b["code"])
+            print()
+
+    @staticmethod
+    def _extract_ideas(session):
+        print(f"Your messages in session {session.short_id}:\n")
+        for m in session.user_messages():
+            clean = m.text.strip()
+            if len(clean) > 10:
+                print(f"  > {clean[:300]}")
+                if len(clean) > 300:
+                    print(f"    [...{len(clean)} chars]")
+                print()
+
+    @staticmethod
+    def _extract_decisions(session):
+        # Search for decision-like patterns
+        patterns = [
+            r"(?i)(let'?s? go with|decided|decision|chose|picking|option \d|we('ll| will) use)",
+            r"(?i)(the plan is|approach:|strategy:|going with|settled on)",
+        ]
+        print(f"Decisions in session {session.short_id}:\n")
+        found = 0
+        for m in session.messages:
+            if not m.text:
+                continue
+            for pat in patterns:
+                for match in re.finditer(pat, m.text):
+                    start = max(0, match.start() - 30)
+                    end = min(len(m.text), match.end() + 100)
+                    snippet = m.text[start:end].replace("\n", " ")
+                    who = "You" if m.role == "user" else "AI"
+                    print(f"  [{who}] ...{snippet}...")
+                    found += 1
+                    break
+        if not found:
+            print("  No explicit decisions found.")
+
+
+class ServeCommand(Command):
+    """Start a local web server to browse conversations."""
+
+    name = "serve"
+    aliases = ("web", "browse")
+
+    def execute(self):
+        args = self.args
+        port = args.port or 3456
+
+        class ChatHandler(BaseHTTPRequestHandler):
+            def log_message(self, format, *a):
+                pass  # suppress request logs
+
+            def do_GET(self):
+                parsed = urlparse(self.path)
+                path = parsed.path
+                query = parse_qs(parsed.query)
+
+                if path == "/" or path == "":
+                    self._serve_index(query)
+                elif path.startswith("/session/"):
+                    session_id = path.split("/session/")[1].strip("/")
+                    self._serve_session(session_id)
+                elif path == "/search":
+                    self._serve_search(query)
+                else:
+                    self.send_error(404)
+
+            def _send_html(self, html_content):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(html_content.encode("utf-8"))
+
+            def _serve_index(self, query):
+                project_filter = query.get("project", [None])[0]
+                sessions = find_all_sessions(project_filter)
+
+                rows = []
+                for s in sessions:
+                    summary_text = html_mod.escape(s.summary(120))
+                    size_kb = s.size / 1024
+                    rows.append(f"""
+                    <tr onclick="window.location='/session/{s.short_id}'" style="cursor:pointer">
+                        <td class="mono">{s.short_id}</td>
+                        <td>{s.modified.strftime('%Y-%m-%d %H:%M')}</td>
+                        <td>{size_kb:.0f} KB</td>
+                        <td class="project">{html_mod.escape(s.project[:40])}</td>
+                        <td>{summary_text}</td>
+                    </tr>""")
+
+                page = WEB_TEMPLATE_INDEX.replace("{{ROWS}}", "\n".join(rows))
+                page = page.replace("{{COUNT}}", str(len(sessions)))
+                page = page.replace("{{PROJECTS}}", str(len(set(s.project for s in sessions))))
+                self._send_html(page)
+
+            def _serve_session(self, session_id):
+                session = find_session(session_id)
+                if not session:
+                    self.send_error(404, f"Session not found: {session_id}")
+                    return
+                session.parse()
+                html_content = HTMLExporter(session, embedded=True).format()
+                self._send_html(html_content)
+
+            def _serve_search(self, query):
+                q = query.get("q", [""])[0]
+                if not q:
+                    self._send_html("<html><body>No query</body></html>")
+                    return
+
+                sessions = find_all_sessions()
+                results = []
+                for s in sessions:
+                    try:
+                        with open(s.path, "r", encoding="utf-8", errors="replace") as f:
+                            content = f.read()
+                        if q.lower() in content.lower():
+                            count = content.lower().count(q.lower())
+                            results.append((s, count))
+                    except (IOError, OSError):
+                        continue
+
+                results.sort(key=lambda r: r[1], reverse=True)
+                rows = []
+                for s, count in results[:50]:
+                    summary_text = html_mod.escape(s.summary(100))
+                    rows.append(f"""
+                    <tr onclick="window.location='/session/{s.short_id}'" style="cursor:pointer">
+                        <td class="mono">{s.short_id}</td>
+                        <td>{count} hits</td>
+                        <td>{s.modified.strftime('%Y-%m-%d %H:%M')}</td>
+                        <td>{summary_text}</td>
+                    </tr>""")
+
+                page = WEB_TEMPLATE_SEARCH.replace("{{ROWS}}", "\n".join(rows))
+                page = page.replace("{{QUERY}}", html_mod.escape(q))
+                page = page.replace("{{COUNT}}", str(len(results)))
+                self._send_html(page)
+
+        try:
+            server = HTTPServer(("127.0.0.1", port), ChatHandler)
+        except OSError as e:
+            if "address already in use" in str(e).lower() or getattr(e, "errno", 0) == 10048:
+                print(f"Port {port} is already in use. Try: claude-chat serve --port {port + 1}")
+                return
+            raise
+
+        url = f"http://127.0.0.1:{port}"
+        print(f"Claude Chat Browser running at {url}")
+        print("Note: No authentication. Do not expose this port on a network.")
+        print("Press Ctrl+C to stop.\n")
+
+        if not args.no_open:
+            webbrowser.open(url)
+
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\nStopped.")
+            server.server_close()
+
+
+class WikiCommand(Command):
+    """Build a static cross-linked HTML archive of all sessions.
+
+    Output tree:
+      <out>/index.html             — all sessions, live client-side search
+      <out>/search-index.json      — index data (also inlined into index.html)
+      <out>/sessions/<short>.html  — one page per session, with backlinks
+    """
+
+    name = "wiki"
+    aliases = ("archive",)
+
+    BODY_CAP = 30000  # chars per session in the search index
+    SHORT_ID_RE = re.compile(r"\b([0-9a-f]{8})\b", re.IGNORECASE)
+
+    def execute(self):
+        args = self.args
+        out_dir = Path(args.output) if args.output else (Path.home() / "claude-chat-wiki")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "sessions").mkdir(exist_ok=True)
+
+        sessions = find_all_sessions(args.project)
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        print(f"Building wiki for {len(sessions)} session(s) -> {out_dir}")
+
+        parsed = self._parse_sessions(sessions)
+        short_ids = {s.short_id for s in parsed}
+        references = self._build_backlinks(parsed, short_ids)
+        search_idx, index_json_str = self._build_search_index(parsed, out_dir)
+        self._write_session_pages(parsed, short_ids, references, out_dir)
+        self._write_index_html(parsed, index_json_str, out_dir)
+
+        print(f"Wiki built: {out_dir}")
+        print(f"Open: {(out_dir / 'index.html').resolve()}")
+
+        if getattr(args, "open", False):
+            webbrowser.open(str((out_dir / "index.html").resolve()))
+
+    @staticmethod
+    def _parse_sessions(sessions):
+        parsed = []
+        for s in sessions:
+            try:
+                s.parse()
+                parsed.append(s)
+            except (IOError, OSError):
+                continue
+        return parsed
+
+    def _build_backlinks(self, parsed, short_ids):
+        """short_id -> set of session short_ids that mention it."""
+        references = {sid: set() for sid in short_ids}
+        for s in parsed:
+            mentioned = set()
+            for m in s.messages:
+                if not m.text:
+                    continue
+                for match in self.SHORT_ID_RE.findall(m.text):
+                    ml = match.lower()
+                    if ml in short_ids and ml != s.short_id:
+                        mentioned.add(ml)
+            for sid in mentioned:
+                references[sid].add(s.short_id)
+        return references
+
+    def _build_search_index(self, parsed, out_dir):
+        """Build the JSON search index (capped per session) and write search-index.json."""
+        search_idx = []
+        for s in parsed:
+            body_chunks = []
+            running = 0
+            for m in s.messages:
+                if m.text:
+                    body_chunks.append(m.text)
+                    running += len(m.text)
+                    if running > self.BODY_CAP:
+                        break
+                # Also surface tool-call inputs as searchable text.
+                for tc in m.tool_calls:
+                    for _, val in _iter_tool_call_strings(tc):
+                        body_chunks.append(val)
+                        running += len(val)
+                        if running > self.BODY_CAP:
+                            break
+                    if running > self.BODY_CAP:
+                        break
+            body = " ".join(body_chunks)
+            if len(body) > self.BODY_CAP:
+                body = body[:self.BODY_CAP]
+            search_idx.append({
+                "short_id": s.short_id,
+                "project": s.project,
+                "date": s.modified.strftime("%Y-%m-%d %H:%M"),
+                "size_kb": int(s.size / 1024),
+                "summary": s.summary(140),
+                "body": body,
+            })
+
+        # Write the separate JSON too (handy for programmatic use).
+        with open(out_dir / "search-index.json", "w", encoding="utf-8") as f:
+            json.dump(search_idx, f, separators=(",", ":"))
+        index_json_str = json.dumps(search_idx, separators=(",", ":"))
+        # Escape "</" so a literal "</script>" inside session data cannot terminate
+        # the surrounding <script> tag. JSON parsers accept "<\/". U+2028 / U+2029
+        # are already escaped by json.dumps (ensure_ascii=True by default).
+        index_json_str = index_json_str.replace("</", "<\\/")
+        total_mb = len(index_json_str) / (1024 * 1024)
+        print(f"  search index: {total_mb:.1f} MB")
+        return search_idx, index_json_str
+
+    def _write_session_pages(self, parsed, short_ids, references, out_dir):
+        """Write one HTML page per session with cross-links and backlinks footer."""
+        rich = getattr(self.args, "rich", False)
+        for s in parsed:
+            html = HTMLExporter(s, embedded=True, rich=rich).format()
+            # Re-target the embedded back-link.
+            html = html.replace('href="/"', 'href="../index.html"')
+            # Cross-link 8-char hex short_ids -> sibling session pages.
+            def linkify(match, current=s.short_id):
+                sid = match.group(1).lower()
+                if sid in short_ids and sid != current:
+                    return f'<a class="xref" href="{sid}.html">{match.group(1)}</a>'
+                return match.group(1)
+            html = self.SHORT_ID_RE.sub(linkify, html)
+            # Backlinks footer.
+            refs = sorted(references.get(s.short_id, set()))
+            if refs:
+                backlinks = (
+                    '<div style="margin:24px 16px;padding:12px;border-top:1px solid #3e3e3e;'
+                    'color:#888;font-size:13px"><strong>Referenced by:</strong> '
+                    + " · ".join(f'<a href="{r}.html" style="color:#569cd6">{r}</a>' for r in refs)
+                    + "</div>"
+                )
+                html = html.replace("</body>", backlinks + "</body>")
+            with open(out_dir / "sessions" / f"{s.short_id}.html", "w", encoding="utf-8") as f:
+                f.write(html)
+
+    @staticmethod
+    def _write_index_html(parsed, index_json_str, out_dir):
+        index_html = WIKI_INDEX_TEMPLATE.replace("{{COUNT}}", str(len(parsed)))
+        index_html = index_html.replace("{{PROJECT_COUNT}}", str(len({s.project for s in parsed})))
+        index_html = index_html.replace("{{INDEX_JSON}}", index_json_str)
+        with open(out_dir / "index.html", "w", encoding="utf-8") as f:
+            f.write(index_html)
+
+
+class ProtectCommand(Command):
+    """Prevent Claude Code from auto-deleting old sessions."""
+
+    name = "protect"
+    aliases = ()
+
+    def execute(self):
+        if not SETTINGS_FILE.exists():
+            settings = {}
+        else:
+            with open(SETTINGS_FILE, "r") as f:
+                settings = json.load(f)
+
+        current = settings.get("cleanupPeriodDays")
+        if current and current >= 99999:
+            print(f"Already protected (cleanupPeriodDays = {current}).")
+            return
+
+        if current:
+            print(f"WARNING: Current cleanupPeriodDays = {current}")
+            print(f"Sessions older than {current} days will be DELETED by Claude Code.")
+
+        settings["cleanupPeriodDays"] = 99999
+
+        # Atomic write: write to temp file, then rename (prevents corruption on crash)
+        tmp = SETTINGS_FILE.with_suffix(".tmp")
+        with open(tmp, "w") as f:
+            json.dump(settings, f, indent=2)
+            f.write("\n")
+        tmp.replace(SETTINGS_FILE)
+
+        print(f"Protected. Set cleanupPeriodDays = 99999 in {SETTINGS_FILE}")
+        print("Your sessions will no longer be auto-deleted.")
+
+
+# ─── Command Registry ────────────────────────────────────────────────────────
+
+def _build_command_registry():
+    """Map every command name + alias to its Command class."""
+    classes = [
+        ListCommand, SearchCommand, ExportCommand, BackupCommand,
+        StatsCommand, ExtractCommand, ServeCommand, WikiCommand, ProtectCommand,
+    ]
+    registry = {}
+    for cls in classes:
+        registry[cls.name] = cls
+        for alias in cls.aliases:
+            registry[alias] = cls
+    return registry
+
+
+COMMAND_REGISTRY = _build_command_registry()
+
+
+# Back-compat module-level shims for callers that still want cmd_* functions
+# (the existing pytest suite uses these). Each is a thin wrapper that builds
+# the right Command and calls execute().
+
+def cmd_list(args):
+    ListCommand(args).execute()
+
+
+def cmd_search(args):
+    SearchCommand(args).execute()
+
+
+def cmd_export(args):
+    ExportCommand(args).execute()
+
+
+def cmd_backup(args):
+    BackupCommand(args).execute()
+
+
+def cmd_stats(args):
+    StatsCommand(args).execute()
+
+
+def cmd_extract(args):
+    ExtractCommand(args).execute()
+
+
+def cmd_serve(args):
+    ServeCommand(args).execute()
+
+
+def cmd_wiki(args):
+    WikiCommand(args).execute()
+
+
+def cmd_protect(args):
+    ProtectCommand(args).execute()
 
 
 # ─── HTML Templates ──────────────────────────────────────────────────────────
@@ -1761,7 +2082,7 @@ tr:hover { background: var(--hover); }
     <div class="stats">{{COUNT}} sessions across {{PROJECTS}} projects</div>
 </div>
 <form class="search-bar" action="/search" method="get" onsubmit="
-    this.querySelector('button').textContent='Searching\u2026';
+    this.querySelector('button').textContent='Searching…';
     this.querySelector('button').style.opacity='0.6';
     this.querySelector('input').style.opacity='0.6';
 ">
@@ -1946,55 +2267,83 @@ _VALID_COMMANDS = {
 }
 
 
-def cmd_interactive(parser):
-    """Interactive REPL mode."""
-    try:
-        import readline  # noqa: F401 — enables arrow keys / history on Unix
-    except ImportError:
-        pass  # Windows: pyreadline3 optional, basic input still works
+class Repl:
+    """Interactive REPL.
 
-    print(f"claude-chat v{__version__} — interactive mode\n")
-    print(_INTERACTIVE_HELP)
-    print()
+    Earns existence: holds the shared argparse parser as state, manages the
+    REPL input/parse/dispatch loop, and enforces the invariants around
+    interactive mode (auto-marking args._interactive, substituting numbered
+    refs, validating tokens before handing to argparse). The methods break
+    up run() per concern (one method = one responsibility).
+    """
 
-    while True:
+    def __init__(self, parser):
+        self.parser = parser
+
+    def run(self):
         try:
-            line = input("claude-chat> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nBye.")
-            break
+            import readline  # noqa: F401 — enables arrow keys / history on Unix
+        except ImportError:
+            pass  # Windows: pyreadline3 optional, basic input still works
 
-        if not line:
-            continue
+        print(f"claude-chat v{__version__} — interactive mode\n")
+        print(_INTERACTIVE_HELP)
+        print()
 
-        if line in ("quit", "exit", "q"):
-            print("Bye.")
-            break
+        while True:
+            try:
+                line = input("claude-chat> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nBye.")
+                break
 
-        if line in ("help", "?", "h"):
-            print(_INTERACTIVE_HELP)
+            if not line:
+                continue
+
+            if line in ("quit", "exit", "q"):
+                print("Bye.")
+                break
+
+            if line in ("help", "?", "h"):
+                print(_INTERACTIVE_HELP)
+                print()
+                continue
+
+            # Shell escape: !command runs in OS shell
+            if line.startswith("!"):
+                self._run_shell(line[1:].strip())
+                continue
+
+            tokens = self._tokenize(line)
+            if tokens is None:
+                continue
+
+            args = self._parse_tokens(tokens)
+            if args is None:
+                continue
+
+            self._dispatch(args)
             print()
-            continue
 
-        # Shell escape: !command runs in OS shell
-        if line.startswith("!"):
-            shell_cmd = line[1:].strip()
-            if shell_cmd:
-                import subprocess
-                try:
-                    subprocess.run(shell_cmd, shell=True)
-                except Exception as e:
-                    print(f"  Shell error: {e}")
-            else:
-                print("  Usage: !command (e.g. !start file.html)")
-            print()
-            continue
+    @staticmethod
+    def _run_shell(shell_cmd):
+        if shell_cmd:
+            import subprocess
+            try:
+                subprocess.run(shell_cmd, shell=True)
+            except Exception as e:
+                print(f"  Shell error: {e}")
+        else:
+            print("  Usage: !command (e.g. !start file.html)")
+        print()
 
+    @staticmethod
+    def _tokenize(line):
         try:
             tokens = shlex.split(line)
         except ValueError as e:
             print(f"Parse error: {e}")
-            continue
+            return None
 
         # "command help" → "command --help"
         if len(tokens) == 2 and tokens[1] == "help":
@@ -2005,11 +2354,9 @@ def cmd_interactive(parser):
             print(f"  Unknown command: '{tokens[0]}'")
             print(f"  Try: list, search, export, stats, serve, help")
             print()
-            continue
+            return None
 
         # Substitute numbered refs (e.g. `export 1` → `export a7e44ed0`).
-        # If no `list` has run yet, the substitution helper auto-populates
-        # the index from find_all_sessions()[:20].
         orig_tokens = list(tokens)
         tokens = _substitute_numbered_refs(tokens)
         if tokens != orig_tokens:
@@ -2018,12 +2365,14 @@ def cmd_interactive(parser):
                     sess = next((s for s in _interactive_index if s.short_id == n), None)
                     if sess:
                         print(f"  [resolved {o} → {n}  \"{sess.summary(60)}\"]")
+        return tokens
 
+    def _parse_tokens(self, tokens):
         try:
-            args = parser.parse_args(tokens)
+            args = self.parser.parse_args(tokens)
         except SystemExit:
             # argparse calls sys.exit on --help or errors; catch it
-            continue
+            return None
 
         # Mark args so cmd_list knows to print numbers + populate the index
         if args.command in ("list", "ls"):
@@ -2031,43 +2380,29 @@ def cmd_interactive(parser):
 
         if not args.command:
             print("  Type a command or 'help' to see options.")
-            continue
+            return None
 
+        return args
+
+    @staticmethod
+    def _dispatch(args):
+        cmd_cls = COMMAND_REGISTRY.get(args.command)
+        if cmd_cls is None:
+            print(f"Unknown command: {args.command}")
+            return
         try:
-            cmd = args.command
-            if cmd in ("list", "ls"):
-                cmd_list(args)
-            elif cmd in ("search", "grep", "find"):
-                cmd_search(args)
-            elif cmd == "export":
-                cmd_export(args)
-            elif cmd == "backup":
-                cmd_backup(args)
-            elif cmd == "stats":
-                cmd_stats(args)
-            elif cmd == "extract":
-                cmd_extract(args)
-            elif cmd in ("serve", "web", "browse"):
-                cmd_serve(args)
-            elif cmd in ("wiki", "archive"):
-                cmd_wiki(args)
-            elif cmd == "protect":
-                cmd_protect(args)
-            else:
-                print(f"Unknown command: {cmd}")
+            cmd_cls(args).execute()
         except Exception as e:
             print(f"Error: {e}")
 
-        print()
+
+# Back-compat shim
+def cmd_interactive(parser):
+    """Interactive REPL mode. Thin wrapper over Repl."""
+    Repl(parser).run()
 
 
-def main():
-    if sys.version_info < (3, 7):
-        print("claude-chat requires Python 3.7 or later.")
-        sys.exit(1)
-
-    _fix_windows_encoding()
-
+def _build_parser():
     parser = argparse.ArgumentParser(
         prog="claude-chat",
         description="One tool for all your Claude Code conversations.",
@@ -2153,31 +2488,28 @@ Examples:
     # protect
     sub.add_parser("protect", help="Prevent auto-deletion of old sessions")
 
+    return parser
+
+
+def main():
+    if sys.version_info < (3, 7):
+        print("claude-chat requires Python 3.7 or later.")
+        sys.exit(1)
+
+    _fix_windows_encoding()
+
+    parser = _build_parser()
     args = parser.parse_args()
 
     if not args.command:
-        cmd_interactive(parser)
+        Repl(parser).run()
         return
 
-    cmd = args.command
-    if cmd in ("list", "ls"):
-        cmd_list(args)
-    elif cmd in ("search", "grep", "find"):
-        cmd_search(args)
-    elif cmd == "export":
-        cmd_export(args)
-    elif cmd == "backup":
-        cmd_backup(args)
-    elif cmd == "stats":
-        cmd_stats(args)
-    elif cmd == "extract":
-        cmd_extract(args)
-    elif cmd in ("serve", "web", "browse"):
-        cmd_serve(args)
-    elif cmd in ("wiki", "archive"):
-        cmd_wiki(args)
-    elif cmd == "protect":
-        cmd_protect(args)
+    cmd_cls = COMMAND_REGISTRY.get(args.command)
+    if cmd_cls is None:
+        print(f"Unknown command: {args.command}")
+        return
+    cmd_cls(args).execute()
 
 
 if __name__ == "__main__":
