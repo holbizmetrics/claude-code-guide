@@ -509,48 +509,124 @@ def cmd_list(args):
         print(f"  Tip: use the number, e.g. `export 1 --format html` or `open 2`")
 
 
-def cmd_search(args):
-    """Search across all conversations."""
-    query = args.query.lower()
-    sessions = find_all_sessions(args.project)
-    results = []
+def _iter_tool_call_strings(tc):
+    """Yield (key, str_value) pairs from a ToolCall.input_data, flattening nested values."""
+    for key, val in tc.input_data.items():
+        if isinstance(val, str):
+            yield key, val
+        elif isinstance(val, (list, tuple)):
+            for i, v in enumerate(val):
+                if isinstance(v, str):
+                    yield f"{key}[{i}]", v
+        elif isinstance(val, dict):
+            for k2, v in val.items():
+                if isinstance(v, str):
+                    yield f"{key}.{k2}", v
 
+
+def _scan_session(s, query, context, tools_only):
+    """Return (count, contexts) for one session. contexts is list of (role, snippet)."""
+    count = 0
+    contexts = []
+
+    def _snippet(text, idx):
+        start = max(0, idx - context)
+        end = min(len(text), idx + len(query) + context)
+        out = text[start:end].replace("\n", " ")
+        if start > 0:
+            out = "..." + out
+        if end < len(text):
+            out = out + "..."
+        return out
+
+    for m in s.messages:
+        if tools_only:
+            for tc in m.tool_calls:
+                for field, val in _iter_tool_call_strings(tc):
+                    lv = val.lower()
+                    if query in lv:
+                        count += lv.count(query)
+                        idx = lv.index(query)
+                        contexts.append((m.role, f"[{tc.name}.{field}] {_snippet(val, idx)}"))
+        else:
+            if m.text:
+                lt = m.text.lower()
+                if query in lt:
+                    count += lt.count(query)
+                    idx = lt.index(query)
+                    contexts.append((m.role, _snippet(m.text, idx)))
+    return count, contexts
+
+
+def cmd_search(args):
+    """Search across all conversations (or within a single session via --in)."""
+    query = args.query.lower()
+    context = max(0, getattr(args, "context", 40))
+    in_session_id = getattr(args, "in_session", None)
+    tools_only = getattr(args, "tools", False)
+
+    # Source of sessions
+    if in_session_id:
+        target = find_session(in_session_id)
+        if not target:
+            print(f"Session not found: {in_session_id}")
+            print("Use 'claude-chat.py list' to see available sessions.")
+            return
+        sessions = [target]
+    else:
+        sessions = find_all_sessions(args.project)
+
+    results = []
     for s in sessions:
         try:
             s.parse()
-            contexts = []
-            count = 0
-            for m in s.messages:
-                if m.text and query in m.text.lower():
-                    count += m.text.lower().count(query)
-                    idx = m.text.lower().index(query)
-                    start = max(0, idx - 40)
-                    end = min(len(m.text), idx + len(query) + 40)
-                    snippet = m.text[start:end].replace("\n", " ")
-                    if start > 0:
-                        snippet = "..." + snippet
-                    if end < len(m.text):
-                        snippet = snippet + "..."
-                    contexts.append((m.role, snippet))
+            count, contexts = _scan_session(s, query, context, tools_only)
             if count > 0:
                 results.append((s, count, contexts))
         except (IOError, OSError):
             continue
 
     if not results:
-        print(f'No results for "{args.query}"')
+        field_tag = " in tool calls" if tools_only else ""
+        print(f'No results for "{args.query}"{field_tag}')
+        # Project-miss suggestion: filter was set, no hits in that project — check elsewhere.
+        if args.project and not in_session_id:
+            other_projects = {}
+            for s in find_all_sessions(None):
+                if args.project.lower() in s.project.lower():
+                    continue  # already searched
+                try:
+                    s.parse()
+                    c, _ = _scan_session(s, query, context, tools_only)
+                    if c > 0:
+                        other_projects[s.project] = other_projects.get(s.project, 0) + c
+                except (IOError, OSError):
+                    continue
+            if other_projects:
+                print(f"\nDid you mean a different project? Matches outside '--project {args.project}':")
+                for p, n in sorted(other_projects.items(), key=lambda x: -x[1])[:5]:
+                    print(f"  --project {p}  ({n} match(es))")
         return
 
     results.sort(key=lambda r: r[1], reverse=True)
-    print(f'Found "{args.query}" in {len(results)} session(s):\n')
+    field_tag = " (tool-call inputs)" if tools_only else ""
+    if in_session_id:
+        s = results[0][0]
+        print(f'Found "{args.query}" in session {s.short_id}{field_tag} — {results[0][1]} match(es):\n')
+    else:
+        print(f'Found "{args.query}" in {len(results)} session(s){field_tag}:\n')
+
+    # When scoped to one session, show all matches; otherwise summarize per-session.
+    preview_limit = 50 if in_session_id else 3
 
     for s, count, contexts in results[:args.limit or 20]:
-        print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {count} matches  [{s.project}]")
-        for role, snippet in contexts[:3]:
+        if not in_session_id:
+            print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {count} matches  [{s.project}]")
+        for role, snippet in contexts[:preview_limit]:
             role_tag = "YOU" if role == "user" else "AI "
             print(f"    {role_tag}: {snippet}")
-        if len(contexts) > 3:
-            print(f"    ... and {len(contexts) - 3} more matches")
+        if len(contexts) > preview_limit:
+            print(f"    ... and {len(contexts) - preview_limit} more matches")
         print()
 
     print("Tip: `export <id> --format md` for human-reading (tool inputs truncated at 500 chars).")
@@ -914,6 +990,133 @@ def cmd_serve(args):
     except KeyboardInterrupt:
         print("\nStopped.")
         server.server_close()
+
+
+def cmd_wiki(args):
+    """Build a static cross-linked HTML archive of all sessions.
+
+    Output tree:
+      <out>/index.html             — all sessions, live client-side search
+      <out>/search-index.json      — index data (also inlined into index.html)
+      <out>/sessions/<short>.html  — one page per session, with backlinks
+    """
+    out_dir = Path(args.output) if args.output else (Path.home() / "claude-chat-wiki")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "sessions").mkdir(exist_ok=True)
+
+    sessions = find_all_sessions(args.project)
+    if not sessions:
+        print("No sessions found.")
+        return
+
+    print(f"Building wiki for {len(sessions)} session(s) -> {out_dir}")
+
+    # Pass 1 — parse all sessions, collect short_ids.
+    parsed = []
+    for s in sessions:
+        try:
+            s.parse()
+            parsed.append(s)
+        except (IOError, OSError):
+            continue
+    short_ids = {s.short_id for s in parsed}
+    short_id_re = re.compile(r"\b([0-9a-f]{8})\b", re.IGNORECASE)
+
+    # Pass 2 — backlink map: short_id -> set of session short_ids that mention it.
+    references = {sid: set() for sid in short_ids}
+    for s in parsed:
+        mentioned = set()
+        for m in s.messages:
+            if not m.text:
+                continue
+            for match in short_id_re.findall(m.text):
+                ml = match.lower()
+                if ml in short_ids and ml != s.short_id:
+                    mentioned.add(ml)
+        for sid in mentioned:
+            references[sid].add(s.short_id)
+
+    # Pass 3 — search index (capped body per session to bound JSON size).
+    BODY_CAP = 30000  # chars per session in the index
+    search_idx = []
+    for s in parsed:
+        body_chunks = []
+        running = 0
+        for m in s.messages:
+            if m.text:
+                body_chunks.append(m.text)
+                running += len(m.text)
+                if running > BODY_CAP:
+                    break
+            # Also surface tool-call inputs as searchable text.
+            for tc in m.tool_calls:
+                for _, val in _iter_tool_call_strings(tc):
+                    body_chunks.append(val)
+                    running += len(val)
+                    if running > BODY_CAP:
+                        break
+                if running > BODY_CAP:
+                    break
+        body = " ".join(body_chunks)
+        if len(body) > BODY_CAP:
+            body = body[:BODY_CAP]
+        search_idx.append({
+            "short_id": s.short_id,
+            "project": s.project,
+            "date": s.modified.strftime("%Y-%m-%d %H:%M"),
+            "size_kb": int(s.size / 1024),
+            "summary": s.summary(140),
+            "body": body,
+        })
+
+    # Write the separate JSON too (handy for programmatic use).
+    with open(out_dir / "search-index.json", "w", encoding="utf-8") as f:
+        json.dump(search_idx, f, separators=(",", ":"))
+    index_json_str = json.dumps(search_idx, separators=(",", ":"))
+    # Escape "</" so a literal "</script>" inside session data cannot terminate
+    # the surrounding <script> tag. JSON parsers accept "<\/". U+2028 / U+2029
+    # are already escaped by json.dumps (ensure_ascii=True by default).
+    index_json_str = index_json_str.replace("</", "<\\/")
+    total_mb = len(index_json_str) / (1024 * 1024)
+    print(f"  search index: {total_mb:.1f} MB")
+
+    # Pass 4 — per-session HTML pages.
+    for s in parsed:
+        html = export_html(s, embedded=True, rich=getattr(args, "rich", False))
+        # Re-target the embedded back-link.
+        html = html.replace('href="/"', 'href="../index.html"')
+        # Cross-link 8-char hex short_ids -> sibling session pages.
+        def linkify(match):
+            sid = match.group(1).lower()
+            if sid in short_ids and sid != s.short_id:
+                return f'<a class="xref" href="{sid}.html">{match.group(1)}</a>'
+            return match.group(1)
+        html = short_id_re.sub(linkify, html)
+        # Backlinks footer.
+        refs = sorted(references.get(s.short_id, set()))
+        if refs:
+            backlinks = (
+                '<div style="margin:24px 16px;padding:12px;border-top:1px solid #3e3e3e;'
+                'color:#888;font-size:13px"><strong>Referenced by:</strong> '
+                + " · ".join(f'<a href="{r}.html" style="color:#569cd6">{r}</a>' for r in refs)
+                + "</div>"
+            )
+            html = html.replace("</body>", backlinks + "</body>")
+        with open(out_dir / "sessions" / f"{s.short_id}.html", "w", encoding="utf-8") as f:
+            f.write(html)
+
+    # Pass 5 — index.html with inline JSON + live search.
+    index_html = WIKI_INDEX_TEMPLATE.replace("{{COUNT}}", str(len(parsed)))
+    index_html = index_html.replace("{{PROJECT_COUNT}}", str(len({s.project for s in parsed})))
+    index_html = index_html.replace("{{INDEX_JSON}}", index_json_str)
+    with open(out_dir / "index.html", "w", encoding="utf-8") as f:
+        f.write(index_html)
+
+    print(f"Wiki built: {out_dir}")
+    print(f"Open: {(out_dir / 'index.html').resolve()}")
+
+    if getattr(args, "open", False):
+        webbrowser.open(str((out_dir / "index.html").resolve()))
 
 
 def cmd_protect(args):
@@ -1572,6 +1775,105 @@ tr:hover { background: var(--hover); }
 </body>
 </html>"""
 
+WIKI_INDEX_TEMPLATE = """<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Claude Chat Archive</title>
+<style>
+:root { --bg:#1e1e1e; --fg:#d4d4d4; --accent:#569cd6; --border:#3e3e3e; --muted:#888; }
+* { box-sizing: border-box; }
+body { background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; margin:0; padding:20px; }
+h1 { color:var(--accent); margin:0 0 4px 0; }
+.meta { color:var(--muted); font-size:13px; margin-bottom:16px; }
+.controls { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+input, select { background:#2d2d2d; color:var(--fg); border:1px solid var(--border); padding:8px 12px; border-radius:4px; font-size:14px; font-family:inherit; }
+input { flex:1; min-width:260px; }
+table { width:100%; border-collapse:collapse; }
+th, td { padding:7px 10px; text-align:left; border-bottom:1px solid var(--border); vertical-align:top; }
+th { font-weight:600; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:0.5px; }
+tbody tr { cursor:pointer; }
+tbody tr:hover { background:#2a2a2a; }
+.mono { font-family:'SF Mono','Cascadia Code',Menlo,Consolas,monospace; color:var(--accent); }
+.snippet { color:#aaa; font-size:12.5px; max-width:640px; }
+.project-tag { font-size:11px; color:#999; }
+mark { background:#664400; color:#fff; padding:0 2px; border-radius:2px; }
+.count { color:var(--muted); align-self:center; font-size:13px; }
+</style>
+</head><body>
+<h1>Claude Chat Archive</h1>
+<div class="meta">{{COUNT}} sessions across {{PROJECT_COUNT}} project(s). Click a row to open. Search matches narrative + tool-call inputs.</div>
+<div class="controls">
+  <input id="q" placeholder="Search..." autofocus />
+  <select id="project"><option value="">All projects</option></select>
+  <span id="count" class="count"></span>
+</div>
+<table id="results">
+  <thead><tr><th>ID</th><th>Date</th><th>Project</th><th>Summary / Match</th></tr></thead>
+  <tbody></tbody>
+</table>
+<script>
+const INDEX = {{INDEX_JSON}};
+const projSet = new Set(INDEX.map(s => s.project));
+const projSelect = document.getElementById('project');
+[...projSet].sort().forEach(p => {
+  const opt = document.createElement('option');
+  opt.value = p; opt.textContent = p;
+  projSelect.appendChild(opt);
+});
+function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function reEscape(s) { return s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'); }
+function highlight(text, q) {
+  if (!q) return esc(text);
+  return esc(text).replace(new RegExp('(' + reEscape(q) + ')', 'gi'), '<mark>$1</mark>');
+}
+function snippet(body, q, width) {
+  width = width || 80;
+  const i = body.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return '';
+  const start = Math.max(0, i - width);
+  const end = Math.min(body.length, i + q.length + width);
+  let snip = body.substring(start, end).replace(/\\s+/g, ' ');
+  if (start > 0) snip = '...' + snip;
+  if (end < body.length) snip += '...';
+  return snip;
+}
+function render() {
+  const q = document.getElementById('q').value.trim();
+  const project = projSelect.value;
+  const tbody = document.querySelector('#results tbody');
+  tbody.innerHTML = '';
+  let shown = 0;
+  const ql = q.toLowerCase();
+  for (const s of INDEX) {
+    if (project && s.project !== project) continue;
+    let snip = '';
+    if (q) {
+      const inSummary = s.summary.toLowerCase().includes(ql);
+      const inBody = s.body.toLowerCase().includes(ql);
+      if (!inSummary && !inBody) continue;
+      snip = inBody ? snippet(s.body, q) : '';
+    }
+    const display = q ? (snip || s.summary) : s.summary;
+    const row = document.createElement('tr');
+    row.innerHTML =
+      '<td class="mono">' + s.short_id + '</td>' +
+      '<td>' + s.date + '</td>' +
+      '<td class="project-tag">' + esc(s.project) + '</td>' +
+      '<td class="snippet">' + highlight(display, q) + '</td>';
+    row.addEventListener('click', () => { window.location = 'sessions/' + s.short_id + '.html'; });
+    tbody.appendChild(row);
+    shown++;
+    if (shown >= 500) break;
+  }
+  document.getElementById('count').textContent = q ? (shown + ' match(es)') : (shown + ' of ' + INDEX.length + ' sessions');
+}
+document.getElementById('q').addEventListener('input', render);
+projSelect.addEventListener('change', render);
+render();
+</script>
+</body></html>"""
+
+
 WEB_TEMPLATE_SEARCH = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1640,7 +1942,7 @@ _INTERACTIVE_HELP = (
 
 _VALID_COMMANDS = {
     "list", "ls", "search", "grep", "find", "export", "backup",
-    "stats", "extract", "serve", "web", "browse", "protect",
+    "stats", "extract", "serve", "web", "browse", "wiki", "archive", "protect",
 }
 
 
@@ -1747,6 +2049,8 @@ def cmd_interactive(parser):
                 cmd_extract(args)
             elif cmd in ("serve", "web", "browse"):
                 cmd_serve(args)
+            elif cmd in ("wiki", "archive"):
+                cmd_wiki(args)
             elif cmd == "protect":
                 cmd_protect(args)
             else:
@@ -1798,6 +2102,12 @@ Examples:
     p.add_argument("query", help="Search query")
     p.add_argument("--project", "-p", help="Filter by project name")
     p.add_argument("--limit", "-n", type=int, default=20, help="Max results")
+    p.add_argument("--in", dest="in_session", metavar="SESSION_ID",
+                   help="Limit search to a single session (full or short ID); shows all matches within that session")
+    p.add_argument("--context", "-C", type=int, default=40,
+                   help="Snippet context chars on each side of match (default 40)")
+    p.add_argument("--tools", action="store_true",
+                   help="Search tool-call inputs (Bash commands, file paths, etc.) instead of narrative text")
 
     # export
     p = sub.add_parser("export", help="Export session to file")
@@ -1833,6 +2143,13 @@ Examples:
     p.add_argument("--port", type=int, default=3456, help="Port number")
     p.add_argument("--no-open", action="store_true", help="Don't auto-open browser")
 
+    # wiki
+    p = sub.add_parser("wiki", aliases=["archive"], help="Build a static cross-linked HTML archive of all sessions")
+    p.add_argument("--output", "-o", help="Output directory (default: ~/claude-chat-wiki)")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--rich", action="store_true", help="Rich HTML rendering: KaTeX math, tables, auto-links")
+    p.add_argument("--open", action="store_true", help="Open the wiki in a browser after building")
+
     # protect
     sub.add_parser("protect", help="Prevent auto-deletion of old sessions")
 
@@ -1857,6 +2174,8 @@ Examples:
         cmd_extract(args)
     elif cmd in ("serve", "web", "browse"):
         cmd_serve(args)
+    elif cmd in ("wiki", "archive"):
+        cmd_wiki(args)
     elif cmd == "protect":
         cmd_protect(args)
 
