@@ -1520,12 +1520,15 @@ class ExtractCommand(Command):
 
         session.parse()
 
+        no_truncate = getattr(args, "no_truncate", False)
+        limit = getattr(args, "limit", None)
+
         if args.code:
             self._extract_code(session)
         elif args.ideas:
-            self._extract_ideas(session)
+            self._extract_ideas(session, no_truncate=no_truncate, limit=limit)
         elif args.decisions:
-            self._extract_decisions(session)
+            self._extract_decisions(session, no_truncate=no_truncate, limit=limit)
         else:
             print("Specify what to extract: --code, --ideas, or --decisions")
 
@@ -1543,23 +1546,32 @@ class ExtractCommand(Command):
             print()
 
     @staticmethod
-    def _extract_ideas(session):
+    def _extract_ideas(session, no_truncate=False, limit=None):
         print(f"Your messages in session {session.short_id}:\n")
+        cap = None if no_truncate else (limit if limit else 300)
         for m in session.user_messages():
             clean = m.text.strip()
             if len(clean) > 10:
-                print(f"  > {clean[:300]}")
-                if len(clean) > 300:
+                if cap is None or len(clean) <= cap:
+                    print(f"  > {clean}")
+                else:
+                    print(f"  > {clean[:cap]}")
                     print(f"    [...{len(clean)} chars]")
                 print()
 
     @staticmethod
-    def _extract_decisions(session):
+    def _extract_decisions(session, no_truncate=False, limit=None):
         # Search for decision-like patterns
         patterns = [
             r"(?i)(let'?s? go with|decided|decision|chose|picking|option \d|we('ll| will) use)",
             r"(?i)(the plan is|approach:|strategy:|going with|settled on)",
         ]
+        # Snippet window: default 30 before / 100 after match. --limit N splits N as 1/4 before, 3/4 after.
+        # --no-truncate shows the full message containing the match.
+        pre, post = 30, 100
+        if limit:
+            pre = max(0, limit // 4)
+            post = max(0, limit - pre)
         print(f"Decisions in session {session.short_id}:\n")
         found = 0
         for m in session.messages:
@@ -1567,11 +1579,16 @@ class ExtractCommand(Command):
                 continue
             for pat in patterns:
                 for match in re.finditer(pat, m.text):
-                    start = max(0, match.start() - 30)
-                    end = min(len(m.text), match.end() + 100)
-                    snippet = m.text[start:end].replace("\n", " ")
-                    who = "You" if m.role == "user" else "AI"
-                    print(f"  [{who}] ...{snippet}...")
+                    if no_truncate:
+                        snippet = m.text.replace("\n", " ").strip()
+                        who = "You" if m.role == "user" else "AI"
+                        print(f"  [{who}] {snippet}")
+                    else:
+                        start = max(0, match.start() - pre)
+                        end = min(len(m.text), match.end() + post)
+                        snippet = m.text[start:end].replace("\n", " ")
+                        who = "You" if m.role == "user" else "AI"
+                        print(f"  [{who}] ...{snippet}...")
                     found += 1
                     break
         if not found:
@@ -2472,6 +2489,8 @@ Examples:
     p.add_argument("--code", action="store_true", help="Extract code blocks")
     p.add_argument("--ideas", action="store_true", help="Extract your messages")
     p.add_argument("--decisions", action="store_true", help="Extract decision points")
+    p.add_argument("--no-truncate", action="store_true", help="Show full content without character cap (applies to --ideas and --decisions)")
+    p.add_argument("--limit", type=int, help="Per-item character cap (default: 300 for --ideas, ~130 for --decisions snippet window)")
 
     # serve
     p = sub.add_parser("serve", aliases=["web", "browse"], help="Browse in your browser")
