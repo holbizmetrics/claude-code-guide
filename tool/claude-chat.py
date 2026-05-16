@@ -502,13 +502,18 @@ class SessionScanner:
     on every scan). `scan()` is the behavior over that state.
     """
 
-    def __init__(self, query, *, context=40, tools_only=False):
+    def __init__(self, query, *, context=40, tools_only=False, no_truncate=False):
         # Invariant: stored query is always lower-cased (matches are case-insensitive).
         self.query = query.lower()
         self.context = max(0, context)
         self.tools_only = tools_only
+        self.no_truncate = no_truncate
 
     def _snippet(self, text, idx):
+        if self.no_truncate:
+            # Return the full text containing the match, preserving newlines.
+            # Caller is responsible for output formatting (multi-line indentation, etc.).
+            return text.strip()
         start = max(0, idx - self.context)
         end = min(len(text), idx + len(self.query) + self.context)
         out = text[start:end].replace("\n", " ")
@@ -1230,8 +1235,9 @@ class SearchCommand(Command):
         context = max(0, getattr(args, "context", 40))
         in_session_id = getattr(args, "in_session", None)
         tools_only = getattr(args, "tools", False)
+        no_truncate = getattr(args, "no_truncate", False)
 
-        scanner = SessionScanner(query, context=context, tools_only=tools_only)
+        scanner = SessionScanner(query, context=context, tools_only=tools_only, no_truncate=no_truncate)
 
         # Source of sessions
         if in_session_id:
@@ -1292,13 +1298,22 @@ class SearchCommand(Command):
                 print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {count} matches  [{s.project}]")
             for role, snippet in contexts[:preview_limit]:
                 role_tag = "YOU" if role == "user" else "AI "
-                print(f"    {role_tag}: {snippet}")
+                if no_truncate and "\n" in snippet:
+                    # Multi-line snippet (full message): prefix first line with role tag, indent rest.
+                    lines = snippet.splitlines()
+                    print(f"    {role_tag}: {lines[0]}")
+                    for cont_line in lines[1:]:
+                        print(f"         {cont_line}")
+                    print(f"    {'-' * 40}")  # visual separator between full-message snippets
+                else:
+                    print(f"    {role_tag}: {snippet}")
             if len(contexts) > preview_limit:
                 print(f"    ... and {len(contexts) - preview_limit} more matches")
             print()
 
         print("Tip: `export <id> --format md` for human-reading (tool inputs truncated at 500 chars).")
         print("     `export <id> --format md --no-truncate` for byte-perfect file/edit recovery.")
+        print("     `search ... --no-truncate` shows full message containing each match (vs. ±context snippet).")
 
 
 class ExportCommand(Command):
@@ -2460,6 +2475,8 @@ Examples:
                    help="Snippet context chars on each side of match (default 40)")
     p.add_argument("--tools", action="store_true",
                    help="Search tool-call inputs (Bash commands, file paths, etc.) instead of narrative text")
+    p.add_argument("--no-truncate", action="store_true",
+                   help="Show full message containing each match (preserves newlines, indents continuation lines). Overrides --context.")
 
     # export
     p = sub.add_parser("export", help="Export session to file")
