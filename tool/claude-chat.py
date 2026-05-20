@@ -19,6 +19,8 @@ Examples:
     python claude-chat.py list --project crystal
     python claude-chat.py search "sobolev spaces"
     python claude-chat.py search "lemma" --in a7e44ed0 -C 80   Within one session, wide context
+    python claude-chat.py search "lemma" --after 2026-05-01    Date-range filter
+    python claude-chat.py export a7e44ed0 --stdout | grep foo  Export to stdout for piping
     python claude-chat.py export a7e44ed0 --format html --open
     python claude-chat.py backup --watch
     python claude-chat.py serve
@@ -329,6 +331,23 @@ class Session:
 # (Bundling them into a "SessionFinder" class with only static-method behavior
 # would be the exact "surface compliance without semantic compliance" the
 # OOP guide warns against.)
+
+def _parse_date_filter(value, end_of_day=False):
+    """Parse a YYYY-MM-DD filter string into a datetime, or None if value is falsy.
+
+    end_of_day=True snaps to 23:59:59 so --before DATE is inclusive of that whole day.
+    Raises ValueError with a user-facing message on a malformed date.
+    """
+    if not value:
+        return None
+    try:
+        dt = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f'Invalid date "{value}" — expected YYYY-MM-DD (e.g. 2026-05-01).')
+    if end_of_day:
+        dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+    return dt
+
 
 def find_all_sessions(project_filter=None):
     """Find all JSONL session files across all projects."""
@@ -1240,6 +1259,14 @@ class SearchCommand(Command):
 
         scanner = SessionScanner(query, context=context, tools_only=tools_only, no_truncate=no_truncate)
 
+        # Date-range filter (by session mtime). YYYY-MM-DD; --before is inclusive of that day.
+        try:
+            after_dt = _parse_date_filter(getattr(args, "after", None), end_of_day=False)
+            before_dt = _parse_date_filter(getattr(args, "before", None), end_of_day=True)
+        except ValueError as e:
+            print(e)
+            return
+
         # Source of sessions
         if in_session_id:
             target = find_session(in_session_id)
@@ -1250,6 +1277,11 @@ class SearchCommand(Command):
             sessions = [target]
         else:
             sessions = find_all_sessions(args.project)
+
+        if after_dt:
+            sessions = [s for s in sessions if s.modified >= after_dt]
+        if before_dt:
+            sessions = [s for s in sessions if s.modified <= before_dt]
 
         results = []
         for s in sessions:
@@ -1348,6 +1380,13 @@ class ExportCommand(Command):
         )
         content = exporter.format()
         ext = exporter_cls.extension
+
+        # --stdout: emit to stdout for piping (grep, redirect) instead of writing a file.
+        if getattr(args, "stdout", False):
+            sys.stdout.write(content)
+            if not content.endswith("\n"):
+                sys.stdout.write("\n")
+            return
 
         filename = f"claude-chat_{session.short_id}_{session.modified.strftime('%Y%m%d')}{ext}"
         out_path = out_dir / filename
@@ -2448,7 +2487,9 @@ Examples:
   %(prog)s search "auth" --in a7e44ed0   Search within ONE session (all matches)
   %(prog)s search "auth" -C 80           Wider context around each match (default 40)
   %(prog)s search "auth" --no-truncate   Show the full message containing each match
+  %(prog)s search "auth" --after 2026-05-01 --before 2026-05-20   Date-range filter
   %(prog)s export a7e44ed0 --format html Export as HTML
+  %(prog)s export a7e44ed0 --stdout | grep foo   Export to stdout for piping
   %(prog)s export a7e44ed0 --format html --open   Export and open in browser
   %(prog)s backup --watch                Watch and backup continuously
   %(prog)s stats                         Show statistics
@@ -2481,6 +2522,10 @@ Examples:
                    help="Search tool-call inputs (Bash commands, file paths, etc.) instead of narrative text")
     p.add_argument("--no-truncate", action="store_true",
                    help="Show full message containing each match (preserves newlines, indents continuation lines). Overrides --context.")
+    p.add_argument("--after", metavar="YYYY-MM-DD",
+                   help="Only sessions modified on or after this date")
+    p.add_argument("--before", metavar="YYYY-MM-DD",
+                   help="Only sessions modified on or before this date (inclusive of the whole day)")
 
     # export
     p = sub.add_parser("export", help="Export session to file")
@@ -2488,6 +2533,7 @@ Examples:
     p.add_argument("--file", help="Path to a JSONL transcript file (e.g. a pre-compact export). Bypasses session lookup.")
     p.add_argument("--format", "-f", choices=["md", "html", "txt", "tex"], default="md", help="Output format")
     p.add_argument("--output", "-o", help="Output directory")
+    p.add_argument("--stdout", action="store_true", help="Write export to stdout instead of a file (for piping/grep/redirect)")
     p.add_argument("--open", action="store_true", help="Open in browser/editor after export")
     p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
     p.add_argument("--diagrams", action="store_true", help="HTML: include a mermaid sequenceDiagram of tool calls")
