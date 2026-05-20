@@ -18,6 +18,7 @@ Examples:
     python claude-chat.py list
     python claude-chat.py list --project crystal
     python claude-chat.py search "sobolev spaces"
+    python claude-chat.py search "lemma" --in a7e44ed0 -C 80   Within one session, wide context
     python claude-chat.py export a7e44ed0 --format html --open
     python claude-chat.py backup --watch
     python claude-chat.py serve
@@ -2444,6 +2445,9 @@ Examples:
   %(prog)s list                          List recent sessions
   %(prog)s list --limit 100              Show more sessions
   %(prog)s search "react hooks"          Search across all chats
+  %(prog)s search "auth" --in a7e44ed0   Search within ONE session (all matches)
+  %(prog)s search "auth" -C 80           Wider context around each match (default 40)
+  %(prog)s search "auth" --no-truncate   Show the full message containing each match
   %(prog)s export a7e44ed0 --format html Export as HTML
   %(prog)s export a7e44ed0 --format html --open   Export and open in browser
   %(prog)s backup --watch                Watch and backup continuously
