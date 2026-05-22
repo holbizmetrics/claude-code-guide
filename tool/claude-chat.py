@@ -283,6 +283,11 @@ class Session:
             pass
         return "(empty session)"
 
+    def smart_headline(self, max_len=100):
+        """No-AI heuristic headline (first real ask / commit subject / edited files /
+        keywords) instead of the first message. Cached by file mtime+size."""
+        return _truncate(_smart_headline_cached(self), max_len)
+
     def user_messages(self):
         """Get only user messages."""
         self.parse()
@@ -322,6 +327,275 @@ class Session:
         except (IOError, OSError):
             pass
         return count
+
+
+# ─── Smart Headlines (heuristic, no AI) ──────────────────────────────────────
+#
+# The default headline is the first user message, which for boot-style sessions
+# is always "Boot up X from:.". Build a meaningful one instead via a cascade:
+#   first real ask  ->  git commit subject  ->  edited files  ->  keywords.
+# Cached by file mtime+size in ~/.claude/.headline-cache.json so list/serve stay
+# fast across runs. Opt-in via --smart; default behavior (summary) is unchanged.
+
+HEADLINE_CACHE_FILE = CLAUDE_DIR / ".headline-cache.json"
+_HEADLINE_CACHE = None
+_HEADLINE_CACHE_DIRTY = False
+_HEADLINE_ALGO = 4  # bump when the cascade changes so cached headlines auto-invalidate
+
+_H_TAG_BLOCK = re.compile(
+    r"<(local-command-caveat|bash-input|bash-stdout|bash-stderr|command-name|"
+    r"command-message|command-args|local-command-stdout|system-reminder)[^>]*>.*?</\1>",
+    re.DOTALL)
+_H_LONE_TAG = re.compile(r"</?[a-z][a-z-]*>")
+_H_INTERRUPT = re.compile(r"\[Request interrupted[^\]]*\]")
+_H_ACK = re.compile(
+    r"^(ok(ay)?|yes+|yeah|yep|yup|no+|nope|sure|thx|thanks?|thank you|ty|continue|"
+    r"go on|go ahead|proceed|good|nice|cool|great|perfect|done|k|hmm+|sounds good|"
+    r"exactly|right|the word)\b", re.IGNORECASE)
+_H_ACK_START = re.compile(
+    r"^(yeah|yes+|yep|yup|no+|nope|sure|ok(ay)?|right|exactly|good|nice|cool|thanks?)\b",
+    re.IGNORECASE)
+_H_COMMIT_M = re.compile(r"git\s+commit\b[^\n]*?-m\s+(['\"])(.+?)\1", re.DOTALL)
+_H_HEREDOC = re.compile(r"<<\s*['\"]?(\w+)['\"]?\s*\n(.*?)\n", re.DOTALL)
+_H_WORD = re.compile(r"[A-Za-z][A-Za-z0-9_\-]{2,}")
+_H_STOP = set((
+    "the a an and or but if then else to of in on for with at by from this that these "
+    "those is are was were be been being it its as we you i he she they them our your my me "
+    "do does did doing have has had not no yes can will would could should may might just like "
+    "get got make made use used using let lets ok now here there what how why when which who "
+    "about into out up down over under again more most some any all one two would want need see "
+    "file files code session please thanks run").split())
+_H_TAGWORDS = set((
+    "local-command-caveat bash-input bash-stdout bash-stderr command-name command-message "
+    "command-args local-command-stdout system-reminder caveat request interrupted boot").split())
+
+
+def _truncate(s, n, max_loss=0.30):
+    """Truncate to n chars at a word boundary, but if backing up to the last
+    space would drop more than max_loss of the budget (e.g. a long spaceless
+    path), hard-cut instead so the distinguishing tail stays visible."""
+    if not s or len(s) <= n:
+        return s
+    cut = s[:n]
+    sp = cut.rfind(" ")
+    if sp >= n * (1 - max_loss):
+        return cut[:sp].rstrip() + "…"
+    return cut.rstrip() + "…"
+
+
+def _h_strip_noise(text):
+    t = _H_TAG_BLOCK.sub(" ", text)
+    t = _H_INTERRUPT.sub(" ", t)
+    t = _H_LONE_TAG.sub(" ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _h_meaningful_ask(t):
+    if len(t) < 12:
+        return False
+    low = t.lower()
+    if low.startswith("boot ") or ("boot up" in low and "from" in low):
+        return False
+    if low.startswith("base directory for this skill"):
+        return False
+    if "accidentally pressed" in low:
+        return False
+    if _H_ACK.match(t) and len(t) < 45:
+        return False
+    return True
+
+
+def _h_first_ask(session):
+    for m in session.messages:
+        if m.role != "user":
+            continue
+        t = _h_strip_noise(m.text)
+        if _h_meaningful_ask(t):
+            return t
+    return None
+
+
+def _h_pathy(t):
+    if t.startswith("\\\\") or re.match(r"^[A-Za-z]:\\", t) or "\\\\wsl" in t.lower():
+        return True
+    return ("\\" in t or "/" in t) and t.count(" ") < 6 and (t.count("\\") + t.count("/")) >= 3
+
+
+def _h_ask_strong(t):
+    if not t or len(t) < 18:
+        return False
+    low = t.lower()
+    if _H_ACK_START.match(t):
+        return False
+    if "accidentally" in low or low.startswith("i meant") or "by from" in low or "i wanna know if there" in low:
+        return False
+    return True
+
+
+def _h_first_nonempty(s):
+    for ln in s.splitlines():
+        if ln.strip():
+            return ln.strip()
+    return None
+
+
+def _h_artifacts(session):
+    commits, edits = [], []
+    for m in session.messages:
+        if m.role != "assistant":
+            continue
+        for tc in m.tool_calls:
+            d = tc.input_data or {}
+            if tc.name == "Bash":
+                cmd = d.get("command", "")
+                if "git commit" in cmd:
+                    subj = None
+                    if "<<" in cmd:
+                        hh = _H_HEREDOC.search(cmd)
+                        if hh:
+                            subj = _h_first_nonempty(hh.group(2))
+                    if not subj:
+                        mm = _H_COMMIT_M.search(cmd)
+                        if mm:
+                            subj = _h_first_nonempty(mm.group(2))
+                    if subj and len(subj) > 3 and not subj.lower().startswith("co-authored"):
+                        commits.append(subj)
+            elif tc.name in ("Edit", "Write", "NotebookEdit"):
+                fp = d.get("file_path") or d.get("notebook_path") or ""
+                if fp:
+                    edits.append(Path(fp).name)
+    seen, uedits = set(), []
+    for e in edits:
+        if e not in seen:
+            seen.add(e)
+            uedits.append(e)
+    return commits, uedits
+
+
+def _h_edits_str(uedits, n=3):
+    if not uedits:
+        return None
+    head = ", ".join(uedits[:n])
+    extra = len(uedits) - n
+    return head + (f" (+{extra})" if extra > 0 else "")
+
+
+def _h_keywords(session, k=4):
+    from collections import Counter
+    c = Counter()
+    for m in session.messages:
+        if not m.text:
+            continue
+        for w in _H_WORD.findall(_h_strip_noise(m.text)):
+            lw = w.lower()
+            if lw in _H_STOP or lw in _H_TAGWORDS:
+                continue
+            c[lw] += 1
+    common = [w for w, _ in c.most_common(k)]
+    return ", ".join(common) if common else None
+
+
+# A genuine filesystem path only: a Windows drive path, or a Unix absolute path
+# with >=2 segments, and only at a token boundary — so prose like "Kafka/RabbitMQ"
+# or "cli/chat.py" mid-sentence is NOT mistaken for a path to front-load.
+_H_PATH = re.compile(r"(?<![^\s(\"'`])[`'\"]?([A-Za-z]:\\[^`'\"\n]+|/[^\s/`'\"]+(?:/[^\s/`'\"]+)+)[`'\"]?")
+_H_VERB = re.compile(
+    r"^\s*(survey|scan|read|audit|review|analy[sz]e|inspect|explore|investigate|check)\b",
+    re.IGNORECASE)
+
+
+def _h_path_leaf(path):
+    p = path.strip().strip("`'\"").rstrip("\\/").replace("/", "\\")
+    return p.split("\\")[-1] or path
+
+
+def _h_subagent_headline(session):
+    """Front-load the target path for subagent task prompts so each row is
+    distinct (e.g. 'Survey Prometheus-Field: ...') and survives truncation."""
+    msg = next((m.text for m in session.messages if m.role == "user" and len(m.text) > 5), "")
+    if not msg:
+        return None
+    one = re.sub(r"\s+", " ", msg).strip()
+    pm = _H_PATH.search(one)
+    if not pm:
+        return None  # no path to front-load; let the normal cascade handle it
+    target = _h_path_leaf(pm.group(1))
+    vm = _H_VERB.match(one)
+    verb = vm.group(1).capitalize() if vm else None
+    tail = re.sub(r"^\s*(and|then|,|;|\.|&)?\s*", "", one[pm.end():], flags=re.IGNORECASE).strip()
+    tail = _H_PATH.sub(lambda m: _h_path_leaf(m.group(1)), tail)  # collapse paths in tail to leaves
+    tail = re.sub(r"\s+", " ", tail).strip()
+    head = f"{verb + ' ' if verb else ''}{target}"
+    return head + (": " + tail if tail else "")
+
+
+def _compute_headline(session):
+    """The cascade. Returns an untruncated headline string (never empty)."""
+    session.parse()
+    if session.is_subagent:
+        sub = _h_subagent_headline(session)
+        if sub:
+            return sub
+    ask = _h_first_ask(session)
+    commits, uedits = _h_artifacts(session)
+    commit = max(commits, key=len) if commits else None
+    edits = _h_edits_str(uedits)
+    strong = _h_ask_strong(ask)
+    if strong and ask and _h_pathy(ask) and (commit or edits):
+        strong = False  # path-heavy ask is a poor headline; prefer artifacts
+    if strong and commit:
+        return _truncate(ask, 60) + "  ·  " + _truncate(commit, 60)
+    if strong:
+        return ask
+    if commit:
+        return commit
+    if edits:
+        return "edits: " + edits
+    if ask:
+        return ask
+    kw = _h_keywords(session)
+    if kw:
+        return "topics: " + kw
+    return session.summary(160)
+
+
+def _load_headline_cache():
+    global _HEADLINE_CACHE
+    if _HEADLINE_CACHE is None:
+        try:
+            _HEADLINE_CACHE = json.loads(HEADLINE_CACHE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            _HEADLINE_CACHE = {}
+    return _HEADLINE_CACHE
+
+
+def save_headline_cache():
+    """Persist the headline cache if it changed. No-op when --smart wasn't used."""
+    global _HEADLINE_CACHE_DIRTY
+    if _HEADLINE_CACHE is None or not _HEADLINE_CACHE_DIRTY:
+        return
+    try:
+        HEADLINE_CACHE_FILE.write_text(json.dumps(_HEADLINE_CACHE), encoding="utf-8")
+        _HEADLINE_CACHE_DIRTY = False
+    except Exception:
+        pass
+
+
+def _smart_headline_cached(session):
+    global _HEADLINE_CACHE_DIRTY
+    cache = _load_headline_cache()
+    key = str(session.path)
+    try:
+        mtime, size = session._stat.st_mtime, session.size
+    except Exception:
+        mtime, size = None, None
+    ent = cache.get(key)
+    if ent and ent.get("v") == _HEADLINE_ALGO and ent.get("mtime") == mtime and ent.get("size") == size:
+        return ent.get("headline") or ""
+    full = _compute_headline(session) or ""
+    cache[key] = {"v": _HEADLINE_ALGO, "mtime": mtime, "size": size, "headline": full}
+    _HEADLINE_CACHE_DIRTY = True
+    return full
 
 
 # ─── Session Discovery ───────────────────────────────────────────────────────
@@ -1223,7 +1497,7 @@ class ListCommand(Command):
                 age_str = f"{age.seconds // 60}m ago"
 
             size_kb = s.size / 1024
-            summary = s.summary(80)
+            summary = s.smart_headline(80) if getattr(args, "smart", False) else s.summary(80)
             num = f"[{i:>3}] " if interactive else ""
             tag = "  >sub " if s.is_subagent else "       "
             print(f"  {num}{s.short_id}{tag}{s.modified.strftime('%Y-%m-%d %H:%M')}  {size_kb:6.0f}KB  {age_str:>8}  {summary}")
@@ -1235,6 +1509,7 @@ class ListCommand(Command):
                 if previews:
                     print()
 
+        save_headline_cache()
         total = len(sessions)
         if total > limit:
             print(f"\n  ... and {total - limit} more. Use --limit {total} to see all.")
@@ -1659,6 +1934,7 @@ class ServeCommand(Command):
     def execute(self):
         args = self.args
         port = args.port or 3456
+        smart = getattr(args, "smart", False)
 
         class ChatHandler(BaseHTTPRequestHandler):
             def log_message(self, format, *a):
@@ -1691,7 +1967,7 @@ class ServeCommand(Command):
 
                 rows = []
                 for s in sessions:
-                    summary_text = html_mod.escape(s.summary(120))
+                    summary_text = html_mod.escape(s.smart_headline(120) if smart else s.summary(120))
                     size_kb = s.size / 1024
                     rows.append(f"""
                     <tr onclick="window.location='/session/{s.short_id}'" style="cursor:pointer">
@@ -1702,6 +1978,7 @@ class ServeCommand(Command):
                         <td>{summary_text}</td>
                     </tr>""")
 
+                save_headline_cache()
                 page = WEB_TEMPLATE_INDEX.replace("{{ROWS}}", "\n".join(rows))
                 page = page.replace("{{COUNT}}", str(len(sessions)))
                 page = page.replace("{{PROJECTS}}", str(len(set(s.project for s in sessions))))
@@ -1737,7 +2014,7 @@ class ServeCommand(Command):
                 results.sort(key=lambda r: r[1], reverse=True)
                 rows = []
                 for s, count in results[:50]:
-                    summary_text = html_mod.escape(s.summary(100))
+                    summary_text = html_mod.escape(s.smart_headline(100) if smart else s.summary(100))
                     rows.append(f"""
                     <tr onclick="window.location='/session/{s.short_id}'" style="cursor:pointer">
                         <td class="mono">{s.short_id}</td>
@@ -1746,6 +2023,7 @@ class ServeCommand(Command):
                         <td>{summary_text}</td>
                     </tr>""")
 
+                save_headline_cache()
                 page = WEB_TEMPLATE_SEARCH.replace("{{ROWS}}", "\n".join(rows))
                 page = page.replace("{{QUERY}}", html_mod.escape(q))
                 page = page.replace("{{COUNT}}", str(len(results)))
@@ -2311,6 +2589,7 @@ tr:hover { background: var(--hover); }
 _INTERACTIVE_HELP = (
     "  list                          Show recent sessions (numbered)\n"
     "  list --detail                 Show with topic previews\n"
+    "  list --smart                  Smarter headlines (real ask / commit / edits)\n"
     "  list --project crystal        Filter by project\n"
     "  search \"react hooks\"          Search across all chats\n"
     "  export SESSION --format html  Export session (md/html/txt/tex)\n"
@@ -2483,6 +2762,7 @@ def _build_parser():
 Examples:
   %(prog)s list                          List recent sessions
   %(prog)s list --limit 100              Show more sessions
+  %(prog)s list --smart                  Smarter headlines when first lines are useless
   %(prog)s search "react hooks"          Search across all chats
   %(prog)s search "auth" --in a7e44ed0   Search within ONE session (all matches)
   %(prog)s search "auth" -C 80           Wider context around each match (default 40)
@@ -2508,6 +2788,7 @@ Examples:
     p.add_argument("--project", "-p", help="Filter by project name")
     p.add_argument("--limit", "-n", type=int, help="Max sessions to show")
     p.add_argument("--detail", "-d", action="store_true", help="Show preview of each session's topics")
+    p.add_argument("--smart", "-s", action="store_true", help="Smarter headlines: first real ask / commit subject / edited files instead of the first message")
 
     # search
     p = sub.add_parser("search", aliases=["grep", "find"], help="Search across all conversations")
@@ -2563,6 +2844,7 @@ Examples:
     p = sub.add_parser("serve", aliases=["web", "browse"], help="Browse in your browser")
     p.add_argument("--port", type=int, default=3456, help="Port number")
     p.add_argument("--no-open", action="store_true", help="Don't auto-open browser")
+    p.add_argument("--smart", "-s", action="store_true", help="Smarter session headlines (first real ask / commit subject / edited files)")
 
     # wiki
     p = sub.add_parser("wiki", aliases=["archive"], help="Build a static cross-linked HTML archive of all sessions")

@@ -1071,3 +1071,44 @@ class TestCmdExportFile:
         out = capsys.readouterr().out
         assert "not found" in out.lower()
         assert list(tmp_path.glob("claude-chat_*.md")) == []
+
+
+# ─── Smart headlines: path detection (regression for the prose-slash quirk) ──
+
+class _FakeSubagentSession:
+    """Minimal duck-typed session for exercising the headline cascade."""
+
+    def __init__(self, text):
+        self.messages = [cc.Message("user", text)]
+        self.is_subagent = True
+
+    def parse(self):
+        pass
+
+    def summary(self, max_len=100):
+        return "(summary)"
+
+
+def test_h_path_ignores_prose_slashes():
+    # prose with slashes must NOT be mistaken for a filesystem path to front-load
+    for prose in ["compare Kafka/RabbitMQ and NATS",
+                  "look at cli/chat.py for the API",
+                  "Erlang/OTP supervision trees"]:
+        assert cc._H_PATH.search(prose) is None, prose
+
+
+def test_h_path_matches_real_paths():
+    assert cc._H_PATH.search(r"open C:\Repo\Prometheus-Field now")
+    assert cc._H_PATH.search("read /home/user/repo/main.py")
+
+
+def test_subagent_prose_slashes_fall_through_to_cascade():
+    text = "You are ONE node. Compare Kafka/RabbitMQ and NATS for messaging."
+    head = cc._compute_headline(_FakeSubagentSession(text))
+    assert "RabbitMQ,:" not in head
+    assert head.startswith("You are ONE node")
+
+
+def test_subagent_real_path_is_front_loaded():
+    head = cc._compute_headline(_FakeSubagentSession("Survey the repo at C:\\Repo\\Prometheus-Field"))
+    assert head.startswith("Survey Prometheus-Field")

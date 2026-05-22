@@ -115,6 +115,21 @@ python3 claude-chat.py export <session> --format html --rich --diagrams --output
 
 ---
 
+## 8. Find a session when the first line is useless
+
+**Situation:** `list` shows each session's first user message — but yours all open the same way ("Boot up X from:.", a pasted template, a one-word "continue"), so every row looks identical and you can't spot the one you mean.
+
+```
+python3 claude-chat.py list --smart          # -s works too
+python3 claude-chat.py serve --smart          # same, in the browser
+```
+
+`--smart` builds a heuristic headline instead of the first message, via a no-AI cascade: first *real* ask → git commit subject → files edited → top keywords. A row reading "Boot up PCLA from:." becomes "edits: why_generalize.md, knowledge_generator.md (+7)" or the actual question you asked three messages in. Headlines are cached by file mtime+size (`~/.claude/.headline-cache.json`), so repeat `list`/`serve` stay fast. Default behavior is unchanged — `--smart` is opt-in.
+
+**Why it works:** boot/template openers carry no signal; the signal is in what you *did* (asks, commits, edits), which the cascade extracts.
+
+---
+
 ## Patterns about discipline, not commands
 
 ### Search before you synthesize
