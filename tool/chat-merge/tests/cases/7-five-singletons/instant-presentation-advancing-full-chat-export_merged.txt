@@ -1,0 +1,709 @@
+╭─── Claude Code v2.1.83 ──────────────────────────────────────────────────────╮
+│                                           │ Tips for getting started         │
+│            Welcome back Holger!           │ √ Run /init to create a CLAUDE.… │
+│                                           │ ──────────────────────────────── │
+│                  ▐▛███▜▌                  │ Recent activity                  │
+│                 ▝▜█████▛▘                 │ No recent activity               │
+│                   ▘▘ ▝▝                   │                                  │
+│                                           │                                  │
+│    Opus 4.6 (1M context) · Claude Max     │                                  │
+│   D:\FromGitHubEtc\instant-presentation   │                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Referenced file scene_renderer.js
+  ⎿  Read scenarios\dry-runs\03-emerging-flowchart.html (313 lines)
+  ⎿  Read scenarios\dry-runs\02-correction-recolor.html (237 lines)
+  ⎿  Read scenarios\dry-runs\01-red-circle-telescope.html (260 lines)
+  ⎿  Read ..\researches\instant-presentation-generation\EVOLUTION.md (92 lines)
+  ⎿  Skills restored (PCrystal)
+
+● Let me read the current state of the scene renderer and analyzer to build the
+  test harness.
+
+  Read 3 files (ctrl+o to expand)
+
+● Now let me check the AnalyzerPlugin base class that SceneAnalyzer depends on.
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Now I'll build the test harness that wires the analyzer and renderer together
+  — feeding the 3 scenarios through the full pipeline and animating the results.
+
+● Write(tests\test_scene_renderer.html)
+  ⎿  Wrote 364 lines to tests\test_scene_renderer.html
+     <!DOCTYPE html>
+     <html>
+     <head>
+       <title>Scene Renderer Test — All 3 Scenarios</title>
+       <style>
+         * { margin: 0; padding: 0; box-sizing: border-box; }
+         body {
+           background: #0a0a1a;
+           color: #e0e0e0;
+           font-family: 'Segoe UI', system-ui, sans-serif;
+     … +354 lines (ctrl+o to expand)
+
+● I can see a few bugs in the renderer that will prevent it from working
+  correctly. Let me fix them before testing.
+
+● Update(scene_renderer.js)
+  ⎿  Added 7 lines, removed 4 lines
+      177        var newPos = positions[id];                             
+      178        if (newPos && self.elements[id]) {                      
+      179          var group = self.elements[id].group;                  
+      180 -        var currentX =                                        
+          -parseFloat(group.getAttribute('transform')                    
+      181 -          ? group.getAttribute('transform').match(/translate\ 
+          -(([\d.-]+)/)[1]                                               
+      182 -          : 0);                                               
+      183 -        if (Math.abs(currentX - newPos.x) > 5 || Math.abs(0 - 
+          - newPos.y) > 5) {                                             
+      180 +        var currentX = 0, currentY = 0;                       
+      181 +        var transform = group.getAttribute('transform');      
+      182 +        if (transform) {                                      
+      183 +          var m = transform.match(/translate\(\s*([\d.eE+-]+) 
+          +\s*[,\s]\s*([\d.eE+-]+)/);                                    
+      184 +          if (m) { currentX = parseFloat(m[1]); currentY =    
+          +parseFloat(m[2]); }                                           
+      185 +        }                                                     
+      186 +        if (Math.abs(currentX - newPos.x) > 5 ||              
+          +Math.abs(currentY - newPos.y) > 5) {                          
+      187            tl.to(group, {                                      
+      188              attr: { transform: 'translate(' + newPos.x + ','  
+           + newPos.y + ')' },                                           
+      189              duration: self.options.animation.moveDuration,    
+
+● Now fix the edge line positioning to offset from shape edges rather than
+  centers:
+
+● Update(scene_renderer.js)
+  ⎿  Added 23 lines, removed 3 lines
+      552      });                                                       
+      553    };                                                          
+      554                                                                
+      555 -  SceneRenderer.prototype._createEdgeLine = function (from,   
+          -to, type) {                                                   
+      555 +  SceneRenderer.prototype._createEdgeLine = function (from,   
+          +to, type, fromObj, toObj) {                                   
+      556      var color = type === 'branch' ?                           
+           this.options.colors.branchArrow : this.options.colors.arrow;  
+      557 +                                                              
+      558 +    // Offset start/end points from shape edges               
+      559 +    var x1 = from.x, y1 = from.y, x2 = to.x, y2 = to.y;       
+      560 +    var dx = to.x - from.x, dy = to.y - from.y;               
+      561 +    var halfW = this.options.shapes.rectangle.defaultWidth /  
+          +2;                                                            
+      562 +    var halfH = this.options.shapes.rectangle.defaultHeight / 
+          + 2;                                                           
+      563 +    var diamondS = this.options.shapes.diamond.defaultSize;   
+      564 +                                                              
+      565 +    // Determine exit direction from source                   
+      566 +    if (Math.abs(dx) > Math.abs(dy)) {                        
+      567 +      // Horizontal — exit from right/left edge               
+      568 +      x1 = from.x + (dx > 0 ? halfW : -halfW);                
+      569 +      x2 = to.x + (dx > 0 ? -halfW : halfW);                  
+      570 +    } else {                                                  
+      571 +      // Vertical — exit from bottom/top edge                 
+      572 +      var fromOffsetY = (fromObj && fromObj.shapeType ===     
+          +'diamond') ? diamondS : halfH;                                
+      573 +      y1 = from.y + (dy > 0 ? fromOffsetY : -fromOffsetY);    
+      574 +      y2 = to.y + (dy > 0 ? -halfH : halfH);                  
+      575 +    }                                                         
+      576 +                                                              
+      577      return svgEl('line', {                                    
+      578 -      x1: from.x, y1: from.y,                                 
+      579 -      x2: to.x, y2: to.y,                                     
+      578 +      x1: x1, y1: y1,                                         
+      579 +      x2: x2, y2: y2,                                         
+      580        stroke: color,                                          
+      581        'stroke-width': 2,                                      
+      582        'marker-end': 'url(#scene-arrow)'                       
+
+● Now update the callers to pass the object references:
+
+● Update(scene_renderer.js)
+  ⎿  Added 3 lines, removed 1 line
+      245        var fromPos = positions[edge.from];                     
+      246        var toPos = positions[edge.to];                         
+      247        if (fromPos && toPos) {                                 
+      248 -        var line = self._createEdgeLine(fromPos, toPos,       
+          -edge.type);                                                   
+      248 +        var fromObj = sceneState.objects[edge.from];          
+      249 +        var toObj = sceneState.objects[edge.to];              
+      250 +        var line = self._createEdgeLine(fromPos, toPos,       
+          +edge.type, fromObj, toObj);                                   
+      251          self.sceneGroup.appendChild(line);                    
+      252          self.edgeElements.push({ from: edge.from, to:         
+           edge.to, line: line });                                       
+      253                                                                
+
+● Also update _renderEdges for initial full renders:
+
+● Update(scene_renderer.js)
+  ⎿  Added 1 line, removed 1 line
+      545          var fromPos = positions[id];                          
+      546          var toPos = positions[edge.target];                   
+      547          if (fromPos && toPos) {                               
+      548 -          var line = self._createEdgeLine(fromPos, toPos,     
+          -edge.type);                                                   
+      548 +          var line = self._createEdgeLine(fromPos, toPos,     
+          +edge.type, obj, sceneState.objects[edge.target]);             
+      549            // Insert edges behind nodes                        
+      550            self.sceneGroup.insertBefore(line,                  
+           self.sceneGroup.firstChild);                                  
+      551            self.edgeElements.push({ from: id, to: edge.target, 
+            line: line });                                               
+
+● Now fix the _morphShape method — GSAP captures the target element at build
+  time, so the reference after call() is stale:
+
+● Update(scene_renderer.js)
+  ⎿  Added 2 lines, removed 1 line
+      439        parent.removeChild(el.shape);                           
+      440        el.shape = newShape;                                    
+      441        gsap.set(newShape, { opacity: 0, scale: 0.7,            
+           transformOrigin: 'center center' });                          
+      442 +      // Animate inline since el.shape changed after timeline 
+          + was built                                                    
+      443 +      gsap.to(newShape, { opacity: 1, scale: 1, duration:     
+          +0.4, ease: 'back.out(1.5)' });                                
+      444      });                                                       
+      445 -    tl.to(el.shape, { opacity: 1, scale: 1, duration: 0.4,    
+          -ease: 'back.out(1.5)' });                                     
+      445    };                                                          
+      446                                                                
+      447                                                                
+
+● There's also an SVG transform animation issue — GSAP doesn't interpolate SVG
+  transform attribute strings well. Let me fix the positioning to use GSAP's
+  native SVG handling.
+
+● Update(scene_renderer.js)
+  ⎿  Added 3 lines, removed 4 lines
+      274    // ── Object rendering ──────────────────────────────────   
+      275                                                                
+      276    SceneRenderer.prototype._renderObject = function (obj, pos, 
+            sceneState) {                                                
+      277 -    var group = svgEl('g', {                                  
+      278 -      transform: 'translate(' + pos.x + ',' + pos.y + ')',    
+      279 -      'data-id': obj.id                                       
+      280 -    });                                                       
+      277 +    var group = svgEl('g', { 'data-id': obj.id });            
+      278 +    // Use GSAP to set initial position (so later animation   
+          +works correctly)                                              
+      279 +    gsap.set(group, { x: pos.x, y: pos.y });                  
+      280                                                                
+      281      var shape = null;                                         
+      282      var text = null;                                          
+
+● Now fix the repositioning logic:
+
+● Update(scene_renderer.js)  ⎿  Added 4 lines, removed 7 lines
+      177        var newPos = positions[id];                             
+      178        if (newPos && self.elements[id]) {                      
+      179          var group = self.elements[id].group;                  
+      180 -        var currentX = 0, currentY = 0;                       
+      181 -        var transform = group.getAttribute('transform');      
+      182 -        if (transform) {                                      
+      183 -          var m = transform.match(/translate\(\s*([\d.eE+-]+) 
+          -\s*[,\s]\s*([\d.eE+-]+)/);                                    
+      184 -          if (m) { currentX = parseFloat(m[1]); currentY =    
+          -parseFloat(m[2]); }                                           
+      185 -        }                                                     
+      180 +        var currentX = gsap.getProperty(group, 'x') || 0;     
+      181 +        var currentY = gsap.getProperty(group, 'y') || 0;     
+      182          if (Math.abs(currentX - newPos.x) > 5 ||              
+           Math.abs(currentY - newPos.y) > 5) {                          
+      183            tl.to(group, {                                      
+      184 -            attr: { transform: 'translate(' + newPos.x + ','  
+          -+ newPos.y + ')' },                                           
+      184 +            x: newPos.x,                                      
+      185 +            y: newPos.y,                                      
+      186              duration: self.options.animation.moveDuration,    
+      187              ease: 'power2.inOut'                              
+      188            }, 0);                                              
+
+● Now fix the child group positioning too:
+
+● Update(scene_renderer.js)
+  ⎿  Added 2 lines, removed 3 lines
+      297      if (obj.children.length > 0) {                            
+      298        obj.children.forEach(function (child) {                 
+      299          var childPos = self._getChildPosition(obj, child,     
+           obj.children.indexOf(child));                                 
+      300 -        var childGroup = svgEl('g', {                         
+      301 -          transform: 'translate(' + childPos.x + ',' +        
+          -childPos.y + ')'                                              
+      302 -        });                                                   
+      300 +        var childGroup = svgEl('g');                          
+      301 +        gsap.set(childGroup, { x: childPos.x, y: childPos.y   
+          +});                                                           
+      302          var childShape = self._createShape(child);            
+      303          if (childShape) childGroup.appendChild(childShape);   
+      304          if (child.properties.label) {                         
+
+● One more fix — when a label is added to an object that didn't have one,
+  el.text is null and the modification gets skipped. Need to create the text
+  element:
+
+● Update(scene_renderer.js)
+  ⎿  Added 12 lines, removed 3 lines
+      226          });                                                   
+      227        }                                                       
+      228                                                                
+      229 -      if (mod.property === 'label' && el.text) {              
+      230 -        tl.call(function () { el.text.textContent =           
+          -mod.newValue; });                                             
+      231 -        tl.fromTo(el.text, { opacity: 0 }, { opacity: 1,      
+          -duration: 0.3 });                                             
+      229 +      if (mod.property === 'label') {                         
+      230 +        if (!el.text) {                                       
+      231 +          // Create text element if it doesn't exist yet      
+      232 +          var newText = svgText(0, 0, '', { size: 13 });      
+      233 +          el.group.appendChild(newText);                      
+      234 +          el.text = newText;                                  
+      235 +          gsap.set(newText, { opacity: 0 });                  
+      236 +        }                                                     
+      237 +        (function (textEl, labelVal) {                        
+      238 +          tl.call(function () { textEl.textContent =          
+          +labelVal; });                                                 
+      239 +          tl.fromTo(textEl, { opacity: 0 }, { opacity: 1,     
+          +duration: 0.3 });                                             
+      240 +        })(el.text, mod.newValue);                            
+      241        }                                                       
+      242                                                                
+      243        if (mod.property === 'shapeType') {                     
+
+● Also need to fix the rectangle rendering — when a color is explicitly set
+  (like "blue box"), it should be the fill, not just the stroke:
+
+● Update(scene_renderer.js)
+  ⎿  Added 4 lines, removed 2 lines
+      339        case 'rectangle':                                       
+      340          var w = this.options.shapes.rectangle.defaultWidth;   
+      341          var h = this.options.shapes.rectangle.defaultHeight;  
+      342 +        var rectFill = obj.properties.color ||                
+          +this.options.colors.defaultFill;                              
+      343 +        var rectStroke = obj.properties.color ?               
+          +obj.properties.color : this.options.colors.defaultStroke;     
+      344          return svgEl('rect', {                                
+      345            x: -w / 2, y: -h / 2, width: w, height: h,          
+      346            rx: this.options.shapes.rectangle.rx,               
+      347 -          fill: this.options.colors.defaultFill,              
+      348 -          stroke: stroke,                                     
+      347 +          fill: rectFill,                                     
+      348 +          stroke: rectStroke,                                 
+      349            'stroke-width': 2,                                  
+      350            filter: 'url(#scene-shadow)'                        
+      351          });                                                   
+
+● Let me verify the final state of the renderer to make sure all edits are
+  consistent.
+
+  Read 1 file (ctrl+o to expand)
+
+● There's a timing issue — creation animations use absolute positions at 0 which
+   will overlap with modifications. Let me fix the creation timing:
+
+● Update(scene_renderer.js)
+  ⎿  Added 4 lines, removed 3 lines
+      190        }                                                       
+      191      });                                                       
+      192                                                                
+      193 -    // Handle created objects                                 
+      194 -    delta.created.forEach(function (id) {                     
+      193 +    // Handle created objects (after modifications finish)    
+      194 +    delta.created.forEach(function (id, idx) {                
+      195        var obj = sceneState.objects[id];                       
+      196        if (!obj) return;                                       
+      197        var pos = positions[id] || { x: self.options.width / 2, 
+            y: self.options.height / 2 };                                
+     ...
+      200        var el = self.elements[id];                             
+      201        if (el) {                                               
+      202          gsap.set(el.group, { opacity: 0, scale: 0.7,          
+           transformOrigin: 'center center' });                          
+      203 +        var offset = idx === 0 ? '+=0.1' : '+=' +             
+          +self.options.animation.stagger;                               
+      204          tl.to(el.group, {                                     
+      205            opacity: 1,                                         
+      206            scale: 1,                                           
+      207            duration: self.options.animation.createDuration,    
+      208            ease: 'back.out(1.5)'                               
+      209 -        }, delta.created.indexOf(id) *                        
+          -self.options.animation.stagger);                              
+      209 +        }, offset);                                           
+      210        }                                                       
+      211      });                                                       
+      212                                                                
+
+● I need to handle containment properly. When a child is created and reparented,
+   it should appear inside the parent's group, not as a standalone root object.
+
+● Update(scene_renderer.js)
+  ⎿  Added 35 lines, removed 2 lines
+      190        }                                                       
+      191      });                                                       
+      192                                                                
+      193 +    // Build a set of reparented IDs so we handle them        
+          +specially                                                     
+      194 +    var reparentedIds = {};                                   
+      195 +    delta.reparented.forEach(function (r) {                   
+          +reparentedIds[r.id] = r.newParent; });                        
+      196 +                                                              
+      197      // Handle created objects (after modifications finish)    
+      198      delta.created.forEach(function (id, idx) {                
+      199        var obj = sceneState.objects[id];                       
+      200        if (!obj) return;                                       
+      201 +                                                              
+      202 +      // If this object was reparented, render it inside the  
+          +parent's group                                                
+      203 +      if (reparentedIds[id]) {                                
+      204 +        var parentEl = self.elements[reparentedIds[id]];      
+      205 +        if (parentEl) {                                       
+      206 +          var parentObj =                                     
+          +sceneState.objects[reparentedIds[id]];                        
+      207 +          var childPos = self._getChildPosition(parentObj,    
+          +obj, parentObj.children.indexOf(obj));                        
+      208 +          var childGroup = svgEl('g');                        
+      209 +          gsap.set(childGroup, { x: childPos.x, y: childPos.y 
+          + });                                                          
+      210 +          var childShape = self._createShape(obj);            
+      211 +          if (childShape) childGroup.appendChild(childShape); 
+      212 +          if (obj.properties.label) {                         
+      213 +            childGroup.appendChild(svgText(0, 0,              
+          +obj.properties.label, { size: 11 }));                         
+      214 +          }                                                   
+      215 +          parentEl.group.appendChild(childGroup);             
+      216 +          self.elements[id] = { group: childGroup, shape:     
+          +childShape };                                                 
+      217 +                                                              
+      218 +          gsap.set(childGroup, { opacity: 0, scale: 0.5,      
+          +transformOrigin: 'center center' });                          
+      219 +          var offset = idx === 0 ? '+=0.1' : '+=' +           
+          +self.options.animation.stagger;                               
+      220 +          tl.to(childGroup, {                                 
+      221 +            opacity: 1,                                       
+      222 +            scale: 1,                                         
+      223 +            duration: self.options.animation.createDuration,  
+      224 +            ease: 'back.out(1.7)'                             
+      225 +          }, offset);                                         
+      226 +          return;                                             
+      227 +        }                                                     
+      228 +      }                                                       
+      229 +                                                              
+      230        var pos = positions[id] || { x: self.options.width / 2, 
+            y: self.options.height / 2 };                                
+      231        self._renderObject(obj, pos, sceneState);               
+      232                                                                
+      233        var el = self.elements[id];                             
+      234        if (el) {                                               
+      235          gsap.set(el.group, { opacity: 0, scale: 0.7,          
+           transformOrigin: 'center center' });                          
+      236 -        var offset = idx === 0 ? '+=0.1' : '+=' +             
+          -self.options.animation.stagger;                               
+      236 +        var offset2 = idx === 0 ? '+=0.1' : '+=' +            
+          +self.options.animation.stagger;                               
+      237          tl.to(el.group, {                                     
+      238            opacity: 1,                                         
+      239            scale: 1,                                           
+      240            duration: self.options.animation.createDuration,    
+      241            ease: 'back.out(1.5)'                               
+      242 -        }, offset);                                           
+      242 +        }, offset2);                                          
+      243        }                                                       
+      244      });                                                       
+      245                                                                
+
+● Need to handle the perspective shift case properly too — when existing objects
+   are reparented into a frame, we shouldn't re-render them. Let me add special
+  handling:
+
+● Update(scene_renderer.js)
+  ⎿  Added 18 lines, removed 1 line
+      302        }                                                       
+      303      });                                                       
+      304                                                                
+      305 -    // Handle perspective shifts                              
+      305 +    // Handle perspective shifts — render frame overlay,      
+          +don't re-render existing content                              
+      306      if (delta.structureChange === 'perspective_shift') {      
+      307 +      delta.created.forEach(function (id) {                   
+      308 +        var obj = sceneState.objects[id];                     
+      309 +        if (obj && obj.type === 'frame' &&                    
+          +!self.elements[id]) {                                         
+      310 +          // Render the frame at scene center as an overlay   
+      311 +          var cx = self.options.width / 2;                    
+      312 +          var cy = self.options.height / 2;                   
+      313 +          var frameGroup = svgEl('g');                        
+      314 +          gsap.set(frameGroup, { x: cx, y: cy });             
+      315 +          var frameShape = self._createFrame(obj);            
+      316 +          if (frameShape) frameGroup.appendChild(frameShape); 
+      317 +          self.sceneGroup.appendChild(frameGroup);            
+      318 +          self.elements[id] = { group: frameGroup, shape:     
+          +frameShape };                                                 
+      319 +                                                              
+      320 +          gsap.set(frameGroup, { opacity: 0 });               
+      321 +          tl.to(frameGroup, { opacity: 1, duration: 0.8,      
+          +ease: 'power2.inOut' }, '+=0.2');                             
+      322 +        }                                                     
+      323 +      });                                                     
+      324        this._applyPerspectiveShift(delta, sceneState, tl);     
+      325      }                                                         
+      326                                                                
+
+● Also need to skip the frame from regular creation handling during perspective
+  shifts:
+
+● Update(scene_renderer.js)
+  ⎿  Added 10 lines
+      194      var reparentedIds = {};                                   
+      195      delta.reparented.forEach(function (r) {                   
+           reparentedIds[r.id] = r.newParent; });                        
+      196                                                                
+      197 +    // For perspective shifts, the frame is handled           
+          +separately — skip its children in creation                    
+      198 +    var isPerspectiveShift = delta.structureChange ===        
+          +'perspective_shift';                                          
+      199 +    var perspectiveFrameId = null;                            
+      200 +    if (isPerspectiveShift) {                                 
+      201 +      delta.created.forEach(function (id) {                   
+      202 +        var obj = sceneState.objects[id];                     
+      203 +        if (obj && obj.type === 'frame') perspectiveFrameId = 
+          + id;                                                          
+      204 +      });                                                     
+      205 +    }                                                         
+      206 +                                                              
+      207      // Handle created objects (after modifications finish)    
+      208      delta.created.forEach(function (id, idx) {                
+      209        var obj = sceneState.objects[id];                       
+
+● Update(scene_renderer.js)
+  ⎿  Added 3 lines
+      209        var obj = sceneState.objects[id];                       
+      210        if (!obj) return;                                       
+      211                                                                
+      212 +      // Skip frame objects during perspective shifts —       
+          +handled separately                                            
+      213 +      if (isPerspectiveShift && (id === perspectiveFrameId || 
+          + reparentedIds[id])) return;                                  
+      214 +                                                              
+      215        // If this object was reparented, render it inside the  
+           parent's group                                                
+      216        if (reparentedIds[id]) {                                
+      217          var parentEl = self.elements[reparentedIds[id]];      
+
+● Need to add a branch arrowhead marker with a different color. Currently
+  there's only one marker definition:
+
+● Update(scene_renderer.js)
+  ⎿  Added 14 lines, removed 1 line
+      123      glow.appendChild(merge);                                  
+      124      this.defs.appendChild(glow);                              
+      125                                                                
+      126 -    // Arrowhead marker                                       
+      126 +    // Arrowhead marker (flow edges)                          
+      127      var marker = svgEl('marker', {                            
+      128        id: 'scene-arrow',                                      
+      129        markerWidth: 10, markerHeight: 7,                       
+     ...
+      136      marker.appendChild(arrowPoly);                            
+      137      this.defs.appendChild(marker);                            
+      138                                                                
+      139 +    // Branch arrowhead marker                                
+      140 +    var branchMarker = svgEl('marker', {                      
+      141 +      id: 'scene-arrow-branch',                               
+      142 +      markerWidth: 10, markerHeight: 7,                       
+      143 +      refX: 10, refY: 3.5, orient: 'auto'                     
+      144 +    });                                                       
+      145 +    var branchArrowPoly = svgEl('polygon', {                  
+      146 +      points: '0 0, 10 3.5, 0 7',                             
+      147 +      fill: this.options.colors.branchArrow                   
+      148 +    });                                                       
+      149 +    branchMarker.appendChild(branchArrowPoly);                
+      150 +    this.defs.appendChild(branchMarker);                      
+      151 +                                                              
+      152      this.svg.appendChild(this.defs);                          
+      153                                                                
+      154      this.sceneGroup = svgEl('g', { id: 'scene-root' });       
+
+● Now update the edge line to use the correct marker:
+
+● Update(scene_renderer.js)
+  ⎿  Added 2 lines, removed 1 line
+      660        y2 = to.y + (dy > 0 ? -halfH : halfH);                  
+      661      }                                                         
+      662                                                                
+      663 +    var markerId = type === 'branch' ? 'scene-arrow-branch' : 
+          + 'scene-arrow';                                               
+      664      return svgEl('line', {                                    
+      665        x1: x1, y1: y1,                                         
+      666        x2: x2, y2: y2,                                         
+      667        stroke: color,                                          
+      668        'stroke-width': 2,                                      
+      669 -      'marker-end': 'url(#scene-arrow)'                       
+      669 +      'marker-end': 'url(#' + markerId + ')'                  
+      670      });                                                       
+      671    };                                                          
+      672                                                                
+● There's an SVG ID collision issue — multiple renderer instances on the same
+  page will have duplicate filter/marker IDs. Let me fix that:
+
+● Update(scene_renderer.js)
+  ⎿  Added 3 lines
+      81                                                                 
+      82    // ── Scene Renderer ────────────────────────────────────    
+      83                                                                 
+      84 +  var _rendererCounter = 0;                                    
+      85 +                                                               
+      86    function SceneRenderer(containerEl, options) {               
+      87      this.container = containerEl;                              
+      88      this.options = Object.assign({}, CONFIG, options || {});   
+      89 +    this._id = ++_rendererCounter;  // unique ID for SVG defs  
+      90      this.svg = null;                                           
+      91      this.defs = null;                                          
+      92      this.sceneGroup = null;                                    
+
+● Now update the defs to use unique IDs:
+
+● Update(scene_renderer.js)
+  ⎿  Added 9 lines, removed 4 lines
+      105                                                                
+      106      this.defs = svgEl('defs');                                
+      107                                                                
+      108 +    var pfx = 'sr' + this._id + '-';  // unique prefix per    
+          +renderer                                                      
+      109 +                                                              
+      110      // Shadow filter                                          
+      111 -    var shadow = svgEl('filter', { id: 'scene-shadow' });     
+      111 +    var shadow = svgEl('filter', { id: pfx + 'shadow' });     
+      112      var dropShadow = svgEl('feDropShadow', {                  
+      113        dx: 0, dy: 3, stdDeviation: 4,                          
+      114        'flood-color': '#000', 'flood-opacity': '0.3'           
+     ...
+      115      this.defs.appendChild(shadow);                            
+      116                                                                
+      117      // Glow filter                                            
+      118 -    var glow = svgEl('filter', { id: 'scene-glow' });         
+      118 +    var glow = svgEl('filter', { id: pfx + 'glow' });         
+      119      var blur = svgEl('feGaussianBlur', { stdDeviation: 4,     
+           result: 'blur' });                                            
+      120      var merge = svgEl('feMerge');                             
+      121      var mergeNode1 = svgEl('feMergeNode', { in: 'blur' });    
+     ...
+      128                                                                
+      129      // Arrowhead marker (flow edges)                          
+      130      var marker = svgEl('marker', {                            
+      131 -      id: 'scene-arrow',                                      
+      131 +      id: pfx + 'arrow',                                      
+      132        markerWidth: 10, markerHeight: 7,                       
+      133        refX: 10, refY: 3.5, orient: 'auto'                     
+      134      });                                                       
+     ...
+      141                                                                
+      142      // Branch arrowhead marker                                
+      143      var branchMarker = svgEl('marker', {                      
+      144 -      id: 'scene-arrow-branch',                               
+      144 +      id: pfx + 'arrow-branch',                               
+      145        markerWidth: 10, markerHeight: 7,                       
+      146        refX: 10, refY: 3.5, orient: 'auto'                     
+      147      });                                                       
+     ...
+      152      branchMarker.appendChild(branchArrowPoly);                
+      153      this.defs.appendChild(branchMarker);                      
+      154                                                                
+      155 +    // Store prefix for use in shape creation                 
+      156 +    this._pfx = pfx;                                          
+      157 +                                                              
+      158      this.svg.appendChild(this.defs);                          
+      159                                                                
+      160      this.sceneGroup = svgEl('g', { id: 'scene-root' });       
+
+● Now update all filter/marker references to use the prefix:
+
+● Update(scene_renderer.js)
+  ⎿  Added 1 line, removed 1 line
+      418          return svgEl('circle', {                              
+      419            cx: 0, cy: 0, r: r,                                 
+      420            fill: color,                                        
+      421 -          filter: 'url(#scene-glow)'                          
+      421 +          filter: 'url(#' + this._pfx + 'glow)'               
+      422          });                                                   
+      423                                                                
+      424        case 'rectangle':                                       
+
+● Update(scene_renderer.js)
+  ⎿  Added 3 lines, removed 3 lines
+      432            fill: rectFill,                                     
+      433            stroke: rectStroke,                                 
+      434            'stroke-width': 2,                                  
+      435 -          filter: 'url(#scene-shadow)'                        
+      435 +          filter: 'url(#' + this._pfx + 'shadow)'             
+      436          });                                                   
+      437                                                                
+      438        case 'triangle':                                        
+     ...
+      453            fill: this.options.colors.defaultFill,              
+      454            stroke: this.options.colors.branchArrow,            
+      455            'stroke-width': 2,                                  
+      456 -          filter: 'url(#scene-shadow)'                        
+      456 +          filter: 'url(#' + this._pfx + 'shadow)'             
+      457          });                                                   
+      458                                                                
+      459        default:                                                
+     ...
+      465            fill: this.options.colors.defaultFill,              
+      466            stroke: stroke,                                     
+      467            'stroke-width': 2,                                  
+      468 -          filter: 'url(#scene-shadow)'                        
+      468 +          filter: 'url(#' + this._pfx + 'shadow)'             
+      469          });                                                   
+      470      }                                                         
+      471    };                                                          
+
+● Update(scene_renderer.js)
+  ⎿  Added 1 line, removed 1 line
+      668        y2 = to.y + (dy > 0 ? -halfH : halfH);                  
+      669      }                                                         
+      670                                                                
+      671 -    var markerId = type === 'branch' ? 'scene-arrow-branch' : 
+          -'scene-arrow';                                                
+      671 +    var markerId = type === 'branch' ? this._pfx + '          
+          +arrow-branch' : this._pfx + 'arrow';                          
+      672      return svgEl('line', {                                    
+      673        x1: x1, y1: y1,                                         
+      674        x2: x2, y2: y2,                                         
+
+● Let me do a final check on the rendered file.
+
+  Read 1 file (ctrl+o to expand)
+
+● Good. Now let me open the test page in the browser.
+
+● Bash(start ""
+      "D:\FromGitHubEtc\instant-presentation\tests\test_scene_renderer.html")
+  ⎿  (No output)
+
+● The test page is open. You should see three scenarios rendering — each
+  processing spoken sentences through the analyzer and rendering the output via
+  the scene renderer with GSAP animations.
+
+  What you're seeing:
+  - Scenario 01: Red circle appears centered → triangle draws inside it →
+  telescope frame overlays with zoom
+  - Scenario 02: Blue box scales in → white flash + color shift to green
+  (correction) → "Start" label fades in
+  - Scenario 03: "User clicks login" rectangle → slides left, arrow draws,
+  "server checks password" appears → diamond morph + branch arrows to "show
+  error" (down) and "go to dashboard" (right)
+
+  Each scenario has a state panel on the right showing live scene graph data
+  (objects, properties, edges, deltas).
+
+  Take a look and let me know what you see — the dry runs set the visual target,
+   and now we can compare the automatic renderer output against those
+  hand-crafted animations.
+
+✻ Worked for 14m 8s

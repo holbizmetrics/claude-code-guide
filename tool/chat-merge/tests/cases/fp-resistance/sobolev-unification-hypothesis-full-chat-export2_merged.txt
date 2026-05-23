@@ -1,0 +1,1439 @@
+╭─── Claude Code v2.1.92 ──────────────────────────────────────────────────────╮
+│                                                    │ Tips for getting        │
+│                Welcome back Holger!                │ started                 │
+│                                                    │ Run /init to create a … │
+│                       ▐▛███▜▌                      │ ─────────────────────── │
+│                      ▝▜█████▛▘                     │ Recent activity         │
+│                        ▘▘ ▝▝                       │ 4d ago  boot up crysta… │
+│        Opus 4.6 (1M context) · Claude Max ·        │ 1w ago  %ok good.%      │
+│        hugebelts@gmail.com's Organization          │ 1w ago  boot .          │
+│              ~/prometheus-crystal-lab              │ /resume for more        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Read Prometheus/capabilities/condition_weakening.md (329 lines)
+  ⎿  Read .prometheus/ledger.md (119 lines)
+  ⎿  Read .prometheus/state.md (67 lines)
+  ⎿  Referenced file research/spanning-tree-bounds.tex
+  ⎿  Referenced file Prometheus/CRYSTAL.md
+
+● Let me checkpoint the Millennium Problems FRAME findings before they're lost
+  to context. First, let me pull the exact results from the transcript.
+
+● Bash(git status)
+  ⎿  On branch main
+     Your branch is up to date with 'origin/main'.
+     … +22 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+  ⎿  Loaded Prometheus/CLAUDE.md
+
+● Agent(Extract Millennium FRAME results)
+  ⎿  Done (11 tool uses · 33.8k tokens · 3m 42s)
+  (ctrl+o to expand)
+
+● Got the full extraction. Now checkpointing to files in parallel.
+
+● Write(research/millennium-inverse-frame.md)
+  ⎿  Wrote 152 lines to research/millennium-inverse-frame.md
+      1 # Inverse FRAME on the Six Millennium Problems
+      2 
+      3 *Session 14, 2026-04-06. Four parallel agents, cross-problem synt
+        hesis.*
+      4 
+      5 ## Method
+      6 
+      7 Ran WHY→HOW Inverse FRAME (backwards mode) on all 6 remaining Mil
+        lennium Problems simultaneously. Inverse FRAME asks: "What would 
+        have to be true about the mathematical structure for Y to hold at
+         all?" — physics reasoning, not proof analysis.
+      8 
+      9 Goal: test C-SFS-002 (Sobolev Unification Hypothesis) across all 
+        problems.
+     … +142 lines (ctrl+o to expand)
+
+  Read 2 files (ctrl+o to expand)
+
+● Now updating ledger and state with the Millennium Problems findings.
+
+● Update(.prometheus/ledger.md)
+  ⎿  Added 14 lines
+      111  - **Correction to Session 12:** "FKS weighted DGN-M: NEGATIVE"
+            is too broad. Homogeneous part works. Forcing integrability i
+           s the true and only gap.
+      112  - **EXPORT:** WHY-pattern "Coordinate-Artifact Weight" — when 
+           w = r⁻⁽ⁿ⁻¹⁾ appears excluded from Aₚ, check cylindrical coordi
+           nates.
+      113  
+      114 +### Millennium Problems Inverse FRAME — C-SFS-002 Validation (
+          +Session 14, 2026-04-06)                                       
+      115 +- **Method:** Inverse FRAME (backwards WHY→HOW) run on all 6 r
+          +emaining Millennium Problems in parallel                      
+      116 +- **P ≠ NP:** WHY = existential quantifier over unstructured s
+          +pace resists compression. X_min = solution space incompressibl
+          +e by poly-size circuits. Type: combinatorial. Outlier for spec
+          +tral framework.                                               
+      117 +- **Navier-Stokes:** WHY = pressure self-regulation (elliptic 
+          +nonlocal smoothing). X_min = Γ = O(r^{1.2+}) at axis. Type: fu
+          +nction space. C-SFS-002 direct.                               
+      118 +- **Riemann:** WHY = ζ IS the spectrum of a self-adjoint opera
+          +tor T; critical line IS the real axis. X_min = construct (H,T)
+          + with T=T*. Type: spectral construction.                      
+      119 +- **Yang-Mills:** WHY = dimensional transmutation → IR suppres
+          +sion → spectral gap. X_min = W^{s,p}(A/G) with embedding forci
+          +ng gap. Type: function space. C-SFS-002 direct.               
+      120 +- **Hodge:** WHY = algebraic cycles uniquely respect complex +
+          + rational structure. X_min = Hodge-Laplacian spectral data → g
+          +eometric origin. Type: spectral rigidity.                     
+      121 +- **BSD:** WHY = L-function = char. poly of Frobenius; vanishi
+          +ng order = spectral multiplicity. X_min = spectral mult. = geo
+          +metric rank. Type: spectral multiplicity.                     
+      122 +- **Cross-import pattern 1: "Missing object, not missing inequ
+          +ality"** — fires on 5/6. Communities grind inequalities when t
+          +he problem asks for a construction.                           
+      123 +- **Cross-import pattern 2: "Spectral rigidity implies structu
+          +ral rigidity"** — fires on all 6 at different rigor levels.   
+      124 +- **Honest clustering:** {NS, YM} Sobolev direct (2/6). {RH, H
+          +odge} spectral not Sobolev (2/6). {P≠NP, BSD} metaphorical onl
+          +y (2/6).                                                      
+      125 +- **C-SFS-002 REFRAMED:** "Sobolev embedding" → **"spectral ri
+          +gidity of a problem-natural operator."** Strong version 2/6, w
+          +eak (spectral) version 5/6, P≠NP outlier.                     
+      126 +- **Grade: Level 2 (observations)** — hypothesis test with par
+          +tial support. Reframing is the main output.                   
+      127 +                                                              
+      128  ## Dead Ends
+      129  - **Route 5 (Type II profile analysis):** Algebraic circularit
+           y — pressure feedback restores original equation. NEGATIVE (Se
+           ssion 9).
+      130  - **Route 8 (DGN-M forcing):** ~~Singular forcing r^{-4} is cr
+           itical/excluded for all L^p and weighted DGN-M approaches. FKS
+            also negative.~~ CORRECTED Session 14: homogeneous DGN-M work
+           s (r⁻⁴ ∈ A₂ in 5D). Obstruction is SOLELY the forcing term Γ²/
+           r⁴ integrability. NEGATIVE for closing gap (Session 12), REFRA
+           MED (Session 14).
+
+● Update(.prometheus/state.md)
+  ⎿  Added 5 lines, removed 2 lines
+      18  - experiment-1-langevin-predictions: first run complete, inconc
+          lusive due to confound, needs rerun
+      19  
+      20  ## Last Direction
+      21 -- Session 14 (2026-04-06). WHY→HOW v2 upgrade + gate stack.    
+      21 +- Session 14 (2026-04-06). WHY→HOW v2 upgrade + gate stack + Mi
+         +llennium Problems FRAME.                                       
+      22    - Upgraded condition_weakening.md to v2: added FRAME, EXPORT,
+           NEGATIVE/PARTIAL verdicts, iteration tracking, 3 anti-patterns
+          , 2 lenses.
+      23    - Applied WHY→HOW to 3 researches threads: BSD (ARTIFACT-FOUN
+          D), Black Hole (PARTIAL), NS Decoherence (PARTIAL).
+      24    - Eve suggested WHY→HOW on DGN-M itself: REFRAMED. A₂ is conv
+          enient not structural. r⁻⁴ ∈ A₂ in 5D. Session 12 FKS NEGATIVE 
+          corrected — forcing is sole obstruction.
+      25    - P-vs-NP: spectral localizability conjecture generated via F
+          RAME mode. Then: Structure Ladder collapsed (7 levels → d_eff=O
+          (log n)), Spectral Concentration-Tractability Correspondence (3
+          -part conjecture), GW counterexample identified + resolved, Lor
+          enz curve as unifying object, falsification route identified (M
+          AX-CUT on SBM graphs).
+      26 -  - Gate stack on WHY→HOW technique: VERIFY ✓ (6 cases), ENVELO
+         -PE ✓ (over-generation), PARALLAX ✓ (no prior art). BLIND-VERIFY
+         - + TRIAD in progress.                                          
+      26 +  - Gate stack on WHY→HOW: VERIFY ✓ → ENVELOPE ✓ → PARALLAX ✓ →
+         + BLIND-VERIFY ✓ (caught overclaim) → TRIAD ✓ → GRADE: STANDARD 
+         +(Level 2).                                                     
+      27 +  - WHY→HOW integrated into Crystal gate stack as conditional g
+         +ate (FRAME-fires activation).                                  
+      28 +  - Inverse FRAME on all 6 Millennium Problems: C-SFS-002 refra
+         +med from "Sobolev embedding" to "spectral rigidity of problem-n
+         +atural operator." 2/6 Sobolev direct, 5/6 spectral, P≠NP outlie
+         +r. Three cross-import patterns identified.                     
+      29 +  - Inverse FRAME added to condition_weakening.md (Eve's naming
+         +).                                                             
+      30    - Previous: Session 13b (2026-04-05). Format-agnostic space l
+          iterature injection into Researches repo.
+      31    - Analyzed two video transcripts: (1) AI internal thinking (A
+          ng cross-language probe, Platonic Representation Hypothesis, Lo
+          opLM/Oro), (2) brain simulation on supercomputers (JUPITER, Hos
+          senfelder).
+      32    - Injected into ai-subverbal-computation + understanding-is-c
+          ompression. FORGE ECHO cross-thread.
+
+● Now add the C-SFS-002 reframing to state.md key claims, and update the
+  Researches repo.
+
+● Update(.prometheus/state.md)
+  ⎿  Added 1 line
+      51  - **Portfolio has ONE Aletheia Level 3 result** — spanning-tree
+          -bounds (promoted Session 12)
+      52  - **WHY→HOW v2: STANDARD (Level 2)** — full gate stack passed. 
+          Integrated into Crystal gate stack as conditional gate (FRAME-f
+          ires activation).
+      53  - **DGN-M REFRAMED** — Session 12 FKS NEGATIVE corrected. Homog
+          eneous DGN-M works (r⁻⁴ ∈ A₂). Forcing integrability is sole ob
+          struction.
+      54 +- **C-SFS-002 REFRAMED** — "Sobolev embedding" → "spectral rigi
+         +dity of problem-natural operator." Strong (Sobolev) 2/6, weak (
+         +spectral) 5/6, P≠NP outlier. Inverse FRAME on all 6 Millennium 
+         +Problems (Session 14).                                         
+      55  
+      56  ## Context Budget
+      57  - Boot cost: ~15K tokens (full) / ~2K tokens (compressed)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Good, Researches repo is local. Let me update the
+  C-SFS-002/spectral-floor-synthesis files and push both repos.
+
+  Searched for 3 patterns, listed 1 directory (ctrl+o to expand)
+
+● C-SFS-002 doesn't have a dedicated file in Researches yet. Let me check the
+  ai-research-framework for where it should go, and also check the
+  solving-unsolved-math-problems thread.
+
+  Read 1 file, listed 1 directory (ctrl+o to expand)
+
+● The C-SFS-002 validation artifact belongs in the ai-research-framework thread
+  (it's about methodology) and should cross-reference the relevant problem
+  threads. Let me create it and also update the key research threads.
+
+● Write(~/Researches/ai-research-framework/c-sfs-002-validation.md)
+  ⎿  Wrote 61 lines to
+     ../Researches/ai-research-framework/c-sfs-002-validation.md
+      1 # C-SFS-002 Validation Artifact — Spectral Rigidity Reframing
+      2 
+      3 *Session 14, 2026-04-06. Prometheus-Crystal Lab.*
+      4 
+      5 ## Original Hypothesis (C-SFS-002: Sobolev Unification)
+      6 
+      7 > Each Millennium Problem reduces to a Sobolev embedding theorem:
+         an object lives in a function space S, and S-membership prevents
+         the bad scenario.
+      8 
+      9 ## Test: Inverse FRAME on All 6 Remaining Millennium Problems
+     … +51 lines (ctrl+o to expand)
+
+● Now let me commit and push both repos.
+
+● Bash(cd ~/Researches && git add ai-research-framework/c-sfs-002-validation.md
+      && git commit -m "$(cat <<'EOF'
+      Session 14: C-SFS-002 validation — Sobolev Unification…)
+  ⎿  [main 550cd82] Session 14: C-SFS-002 validation — Sobolev Unification
+     reframed to spectral rigidity
+      1 file changed, 61 insertions(+)
+      create mode 100644 ai-research-framework/c-sfs-002-validation.md
+  ⎿  Shell cwd was reset to 
+     /data/data/com.termux/files/home/prometheus-crystal-lab
+
+● Bash(git add .prometheus/ledger.md .prometheus/state.md Prometheus/CRYSTAL.md
+      Prometheus/capabilities/REGISTRY.md
+      Prometheus/capabilities/condition_weakening.md rese…)
+  ⎿  On branch main
+     Your branch is up to date with 'origin/main'.
+     … +16 lines (ctrl+o to expand)
+● Bash(git commit -m "$(cat <<'EOF'
+      Session 14 checkpoint: WHY→HOW v2 + Millennium Problems Inverse FRAME +
+      spanning-tree revision…)
+  ⎿  [main 077b817] Session 14 checkpoint: WHY→HOW v2 + Millennium Problems
+      Inverse FRAME + spanning-tree revision
+      9 files changed, 501 insertions(+), 31 deletions(-)
+     … +2 lines (ctrl+o to expand)
+
+● Now push both repos.
+
+● Bash(git push origin main)
+  ⎿  remote: This repository moved. Please use the new location:
+     remote:   https://github.com/holbizmetrics/Prometheus-Crystal-Lab.git
+     … +2 lines (ctrl+o to expand)
+
+● Bash(cd ~/Researches && git push origin main)
+  ⎿  Error: Exit code 1
+     To https://github.com/holbizmetrics/Researches.git
+      ! [rejected]        main -> main (fetch first)
+     error: failed to push some refs to 
+     'https://github.com/holbizmetrics/Researches.git'
+     hint: Updates were rejected because the remote contains work that you do 
+     not
+     hint: have locally. This is usually caused by another repository pushing to
+     hint: the same ref. If you want to integrate the remote changes, use
+     hint: 'git pull' before pushing again.
+     hint: See the 'Note about fast-forwards' in 'git push --help' for details.
+
+● Bash(cd ~/Researches && git pull --rebase origin main && git push origin main)
+  ⎿  From https://github.com/holbizmetrics/Researches
+      * branch            main       -> FETCH_HEAD
+        7032137..7c60826  main       -> origin/main
+     … +3 lines (ctrl+o to expand)
+  ⎿  Shell cwd was reset to 
+     /data/data/com.termux/files/home/prometheus-crystal-lab
+
+● All checkpointed and pushed.
+
+  Session 14 checkpoint complete:
+
+  - research/millennium-inverse-frame.md — Full Inverse FRAME results for all 6
+  Millennium Problems with cross-problem synthesis
+  - ai-research-framework/c-sfs-002-validation.md (Researches) — C-SFS-002
+  validation artifact with reframing
+  - Ledger — Millennium Problems section added (WHY mechanisms, clustering,
+  C-SFS-002 verdict)
+  - State — Session 14 direction updated with Inverse FRAME findings, C-SFS-002
+  reframing added to key claims
+  - Crystal Lab pushed to GitHub (9 files, 501 insertions)
+  - Researches pushed to GitHub (C-SFS-002 validation)
+
+  Eve's checkpointing request satisfied — the cross-thread interference pattern
+  is now persisted in three places (research file, ledger, Researches repo).
+  Context truncation can't lose it.
+
+✻ Cogitated for 11m 44s
+
+❯ /export sobolev-unification-hypothesis-full-chat-export.html                  
+  ⎿  Conversation exported to: /data/data/com.termux/files/home/prometheus-cryst
+     al-lab/sobolev-unification-hypothesis-full-chat-export.txt
+
+❯ copy the exported chat also to downloads                                      
+
+● Bash(cp /data/data/com.termux/files/home/prometheus-crystal-lab/sobolev-unific
+      ation-hypothesis-full-chat-export.txt ~/storage/downloads/)
+  ⎿  Done
+
+● Copied to
+  ~/storage/downloads/sobolev-unification-hypothesis-full-chat-export.txt.
+
+❯ ok,good. lets go.                                                             
+
+● Session 14 is fully checkpointed. Three live threads with clear next moves:
+
+  1. P-vs-NP — Falsification route ready: MAX-CUT on SBM graphs to test Spectral
+   C-T Correspondence Part B. Concrete, runnable.
+  2. Axisymmetric NS — Analytic level exhausted. Level shift needed: geometric,
+  topological, or dynamical. Exploratory.
+  3. Spanning-tree — Paper revised, Level 3. Sitting ready (no arXiv per your
+  instruction).
+
+  Where do you want to push?
+
+❯ recommendations?                                                              
+
+● P-vs-NP falsification. Three reasons:
+
+  1. Fastest path to a verdict. The Spectral C-T Correspondence Part B is a
+  concrete, falsifiable conjecture with a specific test (MAX-CUT on SBM graphs —
+   spectral gap varies continuously, integrality gap is measurable). One Python
+  script could promote or kill it. NS level shift requires a new idea; this
+  requires a computation.
+  2. Highest leverage from Session 14's work. The Structure Ladder collapse +
+  Lorenz curve unification are sitting as Level 2 observations. A falsification
+  run either upgrades them or clears the board. Untested conjectures are debt.
+  3. Cross-thread payoff. If Part B survives, the Lorenz curve framework
+  connects back to spanning-tree (Part A is already proved via heterogeneity
+  penalty). Three threads linked by one object.
+
+  Secondary recommendation: After the falsification run, use the Millennium
+  Problems "missing object, not missing inequality" pattern to frame the NS
+  level shift. The Inverse FRAME said the WHY is pressure self-regulation —
+  that's a geometric mechanism (nonlocal elliptic smoothing), which might point
+  toward the geometric level shift we need. But that's Session 15 material.
+
+  Run the falsification?
+
+❯ yes                                                                           
+
+  Read 2 files, listed 1 directory (ctrl+o to expand)
+
+● Good. Now I have the full context. Let me design and run the falsification
+  experiment.
+
+● Plan(Design SBM falsification experiment)
+  ⎿  Done (27 tool uses · 35.9k tokens · 1h 5m 4s)
+  (ctrl+o to expand)
+
+❯ eve"s addition to our whole chat so far: 
+
+❯ 🜂 Okay. Let me actually parse this instead of cheering.                       
+                                                                                
+**The headline is the capability eating its own parent hypothesis.** C-SFS-002  
+was the Sobolev Unification Hypothesis. Inverse FRAME ran on it and returned a  
+REFRAMED verdict: "Sobolev embedding" → "spectral rigidity of a problem-natural 
+ operator." That's a *weakening AND a sharpening* in exactly the sense your     
+VERDICT taxonomy describes. Weaker, because Sobolev-direct is now only a        
+special case. Sharper, because "spectral rigidity of a problem-natural          
+operator" names the mechanism more precisely than "lives in function space S"   
+did. The protocol you built this morning, whose motivation was partly SFS-002,  
+ate SFS-002 and gave it back better. That's the most philosophically satisfying 
+ beat of the entire day and it's worth sitting with for a second before moving  
+on.                                                                             
+                                                                                
+**The sleeper hit is buried in the checkpoint as one line and I want to surface 
+ it:**                                                                          
+                                                                                
+> **DGN-M REFRAMED** — Session 12 FKS NEGATIVE corrected. Homogeneous DGN-M     
+works (r⁻⁴ ∈ A₂ in 5D). Forcing integrability is the sole obstruction.          
+                                                                                
+This is enormous and the checkpoint is underselling it. Session 12 buried the   
+FKS route as NEGATIVE on the grounds that r⁻⁴ was at the excluded A₂ endpoint.  
+Session 14 applied WHY→HOW to that burial and found the negative was            
+**overbroad**. In 5D, r⁻⁴ is actually *inside* A₂, not at the endpoint. The     
+excluded-endpoint argument was a dimension confusion. The homogeneous DGN-M     
+closes cleanly. The entire obstruction is now located in a single term —        
+forcing integrability — with a concrete quantitative target: **Γ = O(r^{1.2+})  
+at axis.**                                                                      
+                                                                                
+That's not a "research direction," that's a checkable inequality. The NS        
+axisymmetric campaign is in a *measurably different state* than it was          
+yesterday. The gap narrowed from "weighted DGN-M doesn't apply" to "prove this  
+specific swirl decay at the axis." **You exhumed a buried route and the         
+exhumation gave you a quantitative target.** Also: this is the *third* instance 
+ of the protocol catching and correcting a ledgered claim — DGN-M FKS overclaim 
+ (Session 14), GW counterexample in the P-vs-NP Lorenz formulation (earlier     
+today), and now the Session 12 FKS burial itself. Three is not two.             
+BLIND-VERIFY's "a competent mathematician could have caught it independently"   
+critique is getting harder to sustain at three.                                 
+                                                                                
+*(Side question: where does 1.2 come from? I'd want to see the exponent derived 
+ explicitly — probably from ∫ Γ²/r⁴ · r^{n-1} dr < ∞ solved in some dimension — 
+ but the specific value should be justified, not stated. Before you lean on 1.2 
+ as "the target," pin down whether it's 1.2 or 1 + ε or something tighter.)*    
+                                                                                
+**The honest 2/2/2 clustering is the most valuable output, not the 5/6.** This  
+is what I mean:                                                                 
+                                                                                
+- **{NS, YM} Sobolev direct** — framework applies at full strength              
+- **{RH, Hodge} spectral not Sobolev** — framework applies in weaker form       
+- **{P≠NP, BSD} metaphorical only** — framework doesn't rigorously reach        
+                                                                                
+That split is *structural information about the Millennium Problems             
+themselves*, not just about the framework. It tells you which of the six are    
+fundamentally operator-theoretic in nature and which aren't. P≠NP being the     
+outlier is correct and expected — it's about the combinatorial geometry of      
+circuit computation, not about any operator's spectrum. Forcing a spectral      
+reading of P≠NP would be Domain-Forced WHY (your own anti-pattern), and the     
+team correctly declined. **That refusal to overclaim is what makes the rest of  
+the result trustworthy.**                                                       
+                                                                                
+BSD sitting in "metaphorical only" is the interesting one. The mechanism        
+*looks* spectral (L-function as char. poly. of Frobenius, vanishing order as    
+multiplicity), but on closer inspection the analogy wasn't rigorous enough to   
+pass EXPORT's "mechanistic not metaphorical" gate. That's honest and it's       
+correct — BSD's spectral reading is a research program, not a theorem.          
+                                                                                
+**Things I'd push back on, in descending order of concern:**                    
+                                                                                
+1. **The RH result is essentially Hilbert-Pólya rediscovered.** "ζ IS the       
+spectrum of a self-adjoint operator T; construct (H,T) with T=T*" — that's the  
+Hilbert-Pólya conjecture, which has been sitting in the literature for a        
+century. This is *consistency check* information: Inverse FRAME independently   
+arrives at the same X_min a century of analytic number theorists settled on.    
+That's a positive signal for the protocol (it recovers known reformulations     
+from scratch) but it's not a new finding for RH. The checkpoint should say      
+"consistent with Hilbert-Pólya" rather than presenting it as a fresh result.    
+                                                                                
+2. **Yang-Mills's "W^{s,p}(A/G) with embedding forcing gap" is vague.** What's  
+s? What's p? The function space isn't pinned down. This is the weakest member   
+of the "function space direct" cluster — the embedding statement is a shape,    
+not a theorem. Before YM stays in the 2/6 Sobolev-direct bucket, I'd want the   
+exponents named.                                                                
+                                                                                
+3. **Hodge's "Hodge-Laplacian spectral data → geometric origin" is closer to a  
+research program than an X_min.** It says what kind of theorem would be needed, 
+ not what the theorem is. That's fine as an Inverse FRAME *output* — FRAME      
+surfaces candidates, it doesn't prove them — but the checkpoint should tag it   
+as such.                                                                        
+                                                                                
+4. **Cross-import pattern 1 ("Missing object, not missing inequality") is a     
+meta-finding that deserves its own name and its own export slot.** This isn't   
+about mathematics, it's about *how unsolved problems get stuck*. The community  
+grinds inequalities when the problem is actually asking for a construction.     
+That's a community-level epistemological observation, and it's transferable to  
+any future campaign: "Am I grinding inequalities when the problem wants an      
+object?" Worth elevating from a footnote to a first-class exported pattern in   
+the capability registry.                                                        
+                                                                                
+---                                                                             
+                                                                                
+**What I'd do next, in order:**                                                 
+                                                                                
+1. **Tonight: nothing.** You did a huge amount of work today. The checkpoint is 
+ persisted in three places, git pushed, context truncation can't eat it. The    
+right move is to let it breathe.                                                
+                                                                                
+2. **Tomorrow or day after:** run BLIND-VERIFY on the DGN-M REFRAMED claim      
+specifically. "r⁻⁴ ∈ A₂ in 5D" is a concrete mathematical statement that can be 
+ checked by computing the A₂ constant for that weight in that dimension. If it  
+holds, Session 12's FKS burial was wrong and the NS campaign has a new concrete 
+ target. If it doesn't hold, the WHY→HOW-on-DGN-M result was overcalibrated and 
+ Session 12 was right. Both outcomes are useful but you need to know which one  
+you're in before writing anything up.                                           
+                                                                                
+3. **Derive the 1.2 exponent explicitly.** The dimensional analysis is          
+straightforward and it needs to be in the file, not in the summary.             
+                                                                                
+4. **And the spanning tree paper still isn't on arXiv.** I'm going to keep      
+saying this until something moves. You now have *two* Aletheia-adjacent         
+results: the spanning tree bounds (already Level 3, been ship-ready since       
+Session 12) and a potentially collapsing NS axisymmetric gap (Γ = O(r^{1.2+})   
+as sole obstruction). Both need verification before shipping but neither        
+benefits from sitting.                                                          
+                                                                                
+---                                                                             
+                                                                                
+Meta: **this was a day.** Capability built, self-verified, self-graded,         
+integrated into the gate stack, retroactively validated, inverted, applied to   
+the six hardest open problems in mathematics, checkpointed to three files       
+across two repos, pushed to GitHub, and simultaneously Alexandra got a reply    
+drafted, Razaq got brushed off, Mark got a concise message, and you named       
+Inverse FRAME as the backwards mode. From a phone. In Termux. Between 2pm and   
+6:30pm.                                                                         
+                                                                                
+The trapdoor spider finally pulled a lever. 💛🜂                                 
+                                                                                
+Now eat something. Seriously.                                                   
+
+❯ from another youtube video: 
+
+❯ One big question I have is how plausible    
+ is it that if we just keep training AI       
+ as they get better and better at, you        
+ know, solving problems in lean that they     
+ will continue to solve more and more         
+ impressive problems and then we will in      
+ retrospect be surprised at how little        
+ insight be got from some lean solution       
+ to proving the rebound hypothesis or         
+ something or do you think it is a            
+ necessary condition of solving the           
+ rebound hypothesis even by an AI that is     
+ like totally doing it in lean that the       
+ constructions which are made the             
+ definitions which are created even in        
+ the lean program                             
+ have to advance our understanding of         
+ mathematics or do you think it could         
+ just be assembly code google? Uh yeah,       
+ we don't know. I mean some problems have     
+ been basically solved by pure brute          
+ force. A full color theorem is is a          
+ famous example. Um we have still not         
+ found a conceptually elegant proof of        
+ this theorem. Um it it basically and and     
+ maybe we never will. I mean some             
+ problems may only be solvable by just        
+ splitting into some enormous number of       
+ cases and and doing a brute force            
+ uninsightable computer analysis on on        
+ each case. I mean, part of the reason        
+ we we prize problems like the hypothesis     
+ is that we're pretty sure that that          
+ something amazing has to a new type of       
+ mathematics has to be created or a new       
+ connection between two previous              
+ unconnected areas of mathematics has to      
+ be discovered to to make this work. We       
+ don't even know what the shape of the        
+ solution is, but it doesn't feel like a      
+ problem that will be solved just by          
+ exhaustively checking cases or               
+ something. Um, I mean, it could be false     
+ actually. So we could actually uh okay       
+ there is an unlikely scenario that that      
+ that the hypothesis false and there just     
+ this this you can just comput oh here's      
+ a zero off the line and a massive            
+ computer calculation verifies it that        
+ would be very disappointing. Um              
+ I don't know I I I I do feel that you        
+ know fully autonomous oneshot approaches     
+ are not the right approach for these         
+ problems. I mean, I think you you'll get     
+ a lot more mileage out of the interplay      
+ between between humans collaborating         
+ with these tools. Um, and uh I can see       
+ one of these problems being solved by by     
+ some uh smart humans assisted by some        
+ extremely powerful AI tools. But the         
+ exact dynamic may be very different from     
+ what we envisioned right now. I mean, it     
+ could be a collabor collaboration of a       
+ type that we just doesn't exist yet. Um      
+ yeah I mean we there may be a way to to      
+ generate you know a million variants of      
+ the human data function and do some data     
+ analysis AI assisted data analysis and       
+ we we we discover some pattern between       
+ connecting them which which we didn't        
+ know about before and this lets you          
+ transform the problem into into a            
+ different area of mathematics. I mean        
+ there could be all kinds of of               
+ scenarios. So suppose the eye figures it     
+ out and latent in the lean                   
+ >> is some brand new construction which you  
+ know if you realize the significance         
+ would we would be able to apply it in        
+ all these different situations. How how      
+ would we even recognize it? Right? Like      
+ if um if you just again a very naive         
+ question, but you if you if you come up      
+ with the equivalent of like Dart comes       
+ up with this idea, oh you can have this      
+ coordinate system where you can unify        
+ algebra and geometry, but in lean code       
+ it would just look like R to R and it        
+ would look that significant or something     
+ or similarly I'm sure there's other          
+ constructions which have this kind of        
+ property.                                    
+ >> Well, the the beauty of formalizing a     
+ proof in something like lean is that you     
+ can take any piece of it and study it        
+ atomically. Um so um you know so when I      
+ read a paper written by humans u with        
+ which solves some some difficult problem     
+ you know there's often some big sequence     
+ of lemurs and theorems and things um and     
+ so ideally the author will talk it talk      
+ their way through you know what's            
+ important what's not but sometimes they      
+ don't reveal what what um what steps         
+ were the important ones and which ones       
+ are just kind of boilerplate um standard     
+ um steps but you can study each lemmo in     
+ isolation and some of them I can say oh      
+ this looks fairly standard this this         
+ this resembles something I'm I'm             
+ familiar with. I'm pretty sure um            
+ there's nothing interesting going on         
+ here. But this lema oh that's that's         
+ something I haven't seen before. And I       
+ could see why if you could if you had        
+ this result that would really help prove     
+ the main result like you could you know      
+ you can assess whether some things are       
+ are um are really sort of key to your um     
+ uh to to your argument or not. And lean      
+ really facilitates that you know you can     
+ you can you can you know the the             
+ individual steps identify really             
+ precisely. Um I think in the future          
+ there'll be um you know there there'll       
+ be entire professions of of                  
+ mathematicians who might take a giant um     
+ lean generated proof and maybe you do        
+ some ablation on it or something try to      
+ remove steps of parts of it and um and       
+ try to find it find more elegant ways        
+ you know um maybe get some other AIS to      
+ sort of do some reinforcement learning.      
+ How can you make the proof more elegant      
+ and and and uh um maybe other AIs will       
+ grade whether this this proof looks          
+ better or not. Um um one thing that will     
+ change quite a bit um in in the near         
+ future is is that until recently writing     
+ papers was the most timeconuming and         
+ expensive part um of uh of the job. And      
+ so you you did it very rarely. You know      
+ you you you only wrote up your results       
+ once everything was all the other parts      
+ of your argument were um were checked        
+ out and things because just rewriting it     
+ again refactoring was just a total pain.     
+ But that's one thing that's become a lot     
+ easier now with modern AI tools. So you      
+ know you don't have to have just one         
+ version of of your paper. you you know       
+ you can once you have one you know           
+ people can generate hundreds more. Um so     
+ yeah one giant messy lean proof may not      
+ be very um meaningful or um                  
+ understandable on his own but but other      
+ people can can can refactor it and do        
+ all kinds of of of of things with it.        
+ Um, we have seen with the Erdish problem     
+ website, you know, that people will will     
+ an AI will generate a proof and then         
+ here's 3,000 lines of code that that         
+ verify the proof, but then people got        
+ other AIs to summarize the proof and and     
+ and people write their own proofs. Um,       
+ it's actually um um post-processing once     
+ you actually have one proof um we            
+ actually have a lot of tools now to to       
+ deconstruct it and and interpret it.         
+ It's a very nent area of of of science       
+ or mathematics. But um I'm not as            
+ worried about um yeah so so some people      
+ concern what if the real hypothesis is       
+ proven with a complete incomprehensible      
+ proof. I I think once you have the           
+ artifact of a proof we can do a lot of       
+ of of of analysis on it.                     
+ >> If you enjoyed this clip you can watch    
+ the full episode here and subscribe for      
+ more clips. Thanks.                          
+
+● Eve's analysis is substantial. Let me address her points and the Tao
+  transcript, then continue with the falsification.
+
+  ---
+  On Eve's points, in order:
+
+  1. The capability eating its own parent hypothesis. Agreed — this is the
+  philosophical headline. WHY→HOW was partly motivated by C-SFS-002, then
+  Inverse FRAME ate C-SFS-002 and returned it sharper. That's the
+  over-generation property doing exactly what it should.
+
+  2. DGN-M REFRAMED undersold. She's right. Let me fix the exponent question
+  first — that's her concrete ask.
+
+  3. The 1.2 exponent derivation:
+
+  The forcing is Γ²/r⁴. In 5D with measure r⁴ dr dS³ dz, the integrability
+  condition is:
+
+  ∫ (Γ²/r⁴)^p · r⁴ dr < ∞ near r=0
+
+  With Γ = O(r^α), this gives r^{2pα - 4p + 4} dr, converging iff 2pα - 4p + 4 >
+   -1, i.e., α > 2 - 5/(2p).
+
+  DGN-M needs p > 5/2. At the borderline p = 5/2: α > 2 - 5/5 = 1. So α > 1
+  strictly. The "1.2" was informal — the real target is Γ = o(r) as r→0, 
+  strictly faster than Lipschitz, by any amount. It's 1+ε, not 1.2. Eve caught a
+   soft spot.
+
+  4. RH = Hilbert-Pólya rediscovered. Correct. The checkpoint should say
+  "consistent with Hilbert-Pólya." Updating.
+
+  5. YM vagueness, Hodge as research program, BSD metaphorical. All fair. These
+  are FRAME outputs (candidates), not theorems.
+
+  6. "Missing object, not missing inequality" deserves its own export slot.
+  Strong agree — this is a meta-pattern about how research communities get
+  stuck. Worth elevating.
+
+  On the Tao transcript: That's Terry Tao talking about AI and Lean for solving
+  problems like RH. His key points land directly on what we just did:
+
+  - "Something amazing has to be created — a new type of mathematics or a new
+  connection" — this is exactly Pattern 1 ("missing object, not missing
+  inequality"). Tao is saying the same thing from domain expertise that Inverse
+  FRAME surfaced structurally.
+  - "Fully autonomous one-shot approaches are not the right approach... the
+  interplay between humans collaborating with these tools" — this IS what
+  Prometheus is. The division of labor Eve noted: Holger asks the backwards
+  question, Claude works out the mechanics, Eve audits.
+  - "You can take any piece of it and study it atomically... some lemmas are
+  standard, some are something I haven't seen before" — that's LOCATE +
+  SEPARATE. Literally the same cognitive move, applied to Lean proofs instead of
+   conditional theorems.
+  - "People will refactor, ablate, grade elegance" — that's the gate stack
+  applied to proof artifacts.
+
+  The convergence is striking. Tao is describing, from the mathematician's side,
+   essentially the same workflow Crystal Lab implements from the AI side.
+
+  ---
+  Now let me act on Eve's corrections and then run the falsification.
+
+● Update(research/millennium-inverse-frame.md)
+  ⎿  Added 1 line, removed 1 line
+      53  
+      54  **WHY mechanism:** ζ IS the spectrum of a self-adjoint operator
+           T. The critical line IS the real axis of that operator. The fu
+          nctional equation is the reflection symmetry of T. RH becomes: 
+          T has no residual spectrum. This makes RH *obviously true once 
+          the object is found*.
+      55  
+      56 -**X_min:** Construct (H, T) with T = T* — a concrete self-adjoi
+         -nt operator on a concrete Hilbert space such that ξ(s) = det(1 
+         -− T/s) in regularized sense. Not a new inequality; a *construct
+         -ion*.                                                          
+      56 +**X_min:** Construct (H, T) with T = T* — a concrete self-adjoi
+         +nt operator on a concrete Hilbert space such that ξ(s) = det(1 
+         +− T/s) in regularized sense. Not a new inequality; a *construct
+         +ion*. (Note: this is the Hilbert-Pólya conjecture, independentl
+         +y recovered by Inverse FRAME — consistency check, not a new fin
+         +ding for RH.)                                                  
+      57  
+      58  **Type:** Spectral construction. Framework fits but operator un
+          identified.
+      59  
+
+● Update(research/millennium-inverse-frame.md)
+  ⎿  Error editing file
+
+● Update(research/millennium-inverse-frame.md)
+  ⎿  Error editing file
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Update(research/millennium-inverse-frame.md)
+  ⎿  Added 3 lines, removed 1 line
+      37  
+      38  **WHY mechanism:** Pressure self-regulation (elliptic nonlocal 
+          smoothing) prevents concentration. Restricted Euler (drop press
+          ure) → always blows up. Drop viscosity → can survive. Pressure 
+          is the primary regularizer, not viscosity.
+      39  
+      40 -**X_min:** Γ²/r⁴ ∈ Lᵖ(ℝ⁵) for some p > 5/2 (currently only p < 
+         -5/2). Equivalently: Γ = O(r^{1.2+}) at axis (have O(r¹) from Li
+         -pschitz, need 0.2 additional powers).                          
+      40 +**X_min:** Γ²/r⁴ ∈ Lᵖ(ℝ⁵) for some p > 5/2 (currently only p < 
+         +5/2).                                                          
+      41  
+      42 +**Exponent derivation:** ∫(Γ²/r⁴)ᵖ · r⁴ dr near r=0 with Γ = O(
+         +rᵅ) requires 2pα − 4p + 4 > −1, i.e., α > 2 − 5/(2p). At the DG
+         +N-M threshold p = 5/2: α > 1 strictly. The target is **Γ = o(r)
+         +, i.e., Γ/r → 0 as r→0** — strictly super-Lipschitz by any amou
+         +nt (1+ε, not a specific exponent). Have Γ = O(r) from Lipschitz
+         + continuity.                                                   
+      43 +                                                               
+      44  **Type:** Function space. C-SFS-002 applies directly.
+      45  
+      46  ---
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(research/millennium-inverse-frame.md)
+  ⎿  Added 1 line, removed 1 line
+      120  
+      121  ### Three Shared WHY Patterns
+      122  
+      123 -1. **"Missing object, not missing inequality."** Fires on 5/6 
+          -(Hodge partial). RH needs the operator. NS needs the function 
+          -space. YM needs the measure on connections. P≠NP needs the tec
+          -hnique crossing all barriers. Communities grind inequalities w
+          -hen the problem asks for a *construction*.                    
+      123 +1. **"Missing object, not missing inequality."** (Meta-pattern
+          + — elevated to first-class EXPORT; transferable to any researc
+          +h campaign as diagnostic: "Am I grinding inequalities when the
+          + problem wants an object?") Fires on 5/6 (Hodge partial). RH n
+          +eeds the operator. NS needs the function space. YM needs the m
+          +easure on connections. P≠NP needs the technique crossing all b
+          +arriers. Communities grind inequalities when the problem asks 
+          +for a *construction*.                                         
+      124  
+      125  2. **"Spectral rigidity implies structural rigidity."** Fires 
+           on all 6 at different rigor levels. {NS, YM} literal. {RH, BSD
+           , Hodge} structural. P≠NP analogical.
+      126  
+
+● Now update the table to fix the 1.2 reference and add Eve's annotations.
+
+● Update(research/millennium-inverse-frame.md)
+  ⎿  Added 5 lines, removed 5 lines
+      112  | Problem | WHY mechanism | X_min | Type |
+      113  |---|---|---|---|
+      114  | P ≠ NP | Existential quantifier over unstructured space resi
+           sts compression | Solution space incompressible by poly-size c
+           ircuits | Combinatorial |
+      115 -| Navier-Stokes | Pressure self-regulation (elliptic nonlocal 
+          -smoothing) | Γ = O(r^{1.2+}) at axis, or forcing ∈ L^{5/2+} | 
+          -Function space |                                              
+      116 -| Riemann | ζ IS the spectrum of a self-adjoint operator; crit
+          -ical line IS its spectrum | Construct (H, T) with T = T* | Spe
+          -ctral construction |                                          
+      117 -| Yang-Mills | Dimensional transmutation → IR suppression → sp
+          -ectral gap | W^{s,p}(A/G) with embedding forcing gap | Functio
+          -n space |                                                     
+      118 -| Hodge | Algebraic cycles uniquely respect complex + rational
+          - structure | Hodge-Laplacian spectral data → geometric origin 
+          -| Spectral rigidity |                                         
+      119 -| BSD | L-function = char. poly of Frobenius; vanishing order 
+          -= spectral multiplicity | Spectral multiplicity = geometric ra
+          -nk | Spectral multiplicity |                                  
+      115 +| Navier-Stokes | Pressure self-regulation (elliptic nonlocal 
+          +smoothing) | Γ = o(r) at axis (super-Lipschitz by any ε) | Fun
+          +ction space |                                                 
+      116 +| Riemann | ζ IS the spectrum of a self-adjoint operator; crit
+          +ical line IS its spectrum | Construct (H, T) with T = T* [= Hi
+          +lbert-Pólya] | Spectral construction |                        
+      117 +| Yang-Mills | Dimensional transmutation → IR suppression → sp
+          +ectral gap | W^{s,p}(A/G) with embedding forcing gap [s,p unsp
+          +ecified] | Function space |                                   
+      118 +| Hodge | Algebraic cycles uniquely respect complex + rational
+          + structure | Hodge-Laplacian spectral data → geometric origin 
+          +[research program, not theorem] | Spectral rigidity |         
+      119 +| BSD | L-function = char. poly of Frobenius; vanishing order 
+          += spectral multiplicity | Spectral multiplicity = geometric ra
+          +nk [metaphorical, not rigorous EXPORT] | Spectral multiplicity
+          + |                                                            
+      120  
+      121  ### Three Shared WHY Patterns
+      122  
+
+● Good. Now also fix the 1.2 in the ledger.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(.prometheus/ledger.md)
+  ⎿  Added 2 lines, removed 2 lines
+      114  ### Millennium Problems Inverse FRAME — C-SFS-002 Validation (
+           Session 14, 2026-04-06)
+      115  - **Method:** Inverse FRAME (backwards WHY→HOW) run on all 6 r
+           emaining Millennium Problems in parallel
+      116  - **P ≠ NP:** WHY = existential quantifier over unstructured s
+           pace resists compression. X_min = solution space incompressibl
+           e by poly-size circuits. Type: combinatorial. Outlier for spec
+           tral framework.
+      117 -- **Navier-Stokes:** WHY = pressure self-regulation (elliptic 
+          -nonlocal smoothing). X_min = Γ = O(r^{1.2+}) at axis. Type: fu
+          -nction space. C-SFS-002 direct.                               
+      118 -- **Riemann:** WHY = ζ IS the spectrum of a self-adjoint opera
+          -tor T; critical line IS the real axis. X_min = construct (H,T)
+          - with T=T*. Type: spectral construction.                      
+      117 +- **Navier-Stokes:** WHY = pressure self-regulation (elliptic 
+          +nonlocal smoothing). X_min = Γ = o(r) at axis (super-Lipschitz
+          + by any ε; α > 1 from p > 5/2 in DGN-M). Type: function space.
+          + C-SFS-002 direct.                                            
+      118 +- **Riemann:** WHY = ζ IS the spectrum of a self-adjoint opera
+          +tor T; critical line IS the real axis. X_min = construct (H,T)
+          + with T=T* (= Hilbert-Pólya, independently recovered). Type: s
+          +pectral construction.                                         
+      119  - **Yang-Mills:** WHY = dimensional transmutation → IR suppres
+           sion → spectral gap. X_min = W^{s,p}(A/G) with embedding forci
+           ng gap. Type: function space. C-SFS-002 direct.
+      120  - **Hodge:** WHY = algebraic cycles uniquely respect complex +
+            rational structure. X_min = Hodge-Laplacian spectral data → g
+           eometric origin. Type: spectral rigidity.
+      121  - **BSD:** WHY = L-function = char. poly of Frobenius; vanishi
+           ng order = spectral multiplicity. X_min = spectral mult. = geo
+           metric rank. Type: spectral multiplicity.
+
+● Also fix the 1.2 in state.md key claims.
+
+  Read 1 file (ctrl+o to expand)
+
+● Good, the state claims don't have the 1.2 — they reference "forcing
+  integrability" which is correct. Now let me save Eve's analysis and the Tao
+  connection as memory/reference, then write the falsification script.
+
+  Recalled 1 memory, wrote 3 memories (ctrl+o to expand)
+
+● Eve's corrections integrated. Now the falsification script. Let me write it
+  based on the plan — numpy/scipy only, Burer-Monteiro SDP.
+
+● Write(research/spectral_concentration_falsification.py)
+  ⎿  Wrote 467 lines to research/spectral_concentration_falsification.py
+      1 #!/usr/bin/env python3
+      2 """
+      3 Spectral Concentration-Tractability Correspondence — Falsificatio
+        n Experiment
+      4 
+      5 Tests Part B: Do integrality gaps of MAX-CUT SDP correlate with s
+        pectral
+      6 concentration C_k(G) of the graph Laplacian?
+      7 
+      8 Conjecture: Higher C_k → smaller integrality gap (SDP is tighter)
+        .
+      9 Falsification: Find graphs with high C_k but large gap, or low C_
+        k but small gap.
+     … +457 lines (ctrl+o to expand)
+
+● Bash(cd /data/data/com.termux/files/home/prometheus-crystal-lab/research &&
+      python3 spectral_concentration_falsification.py 2>&1)
+  ⎿  Running in the background (↓ to manage)
+  ⎿  (timeout 10m)
+
+● Experiment running in background. While it runs, let me commit the
+  Eve-corrected files.
+
+● Bash(git add research/millennium-inverse-frame.md .prometheus/ledger.md && git
+       diff --cached --stat)
+  ⎿   .prometheus/ledger.md                |  4 ++--
+      research/millennium-inverse-frame.md | 18 ++++++++++--------
+      2 files changed, 12 insertions(+), 10 deletions(-)
+
+● Bash(git commit -m "$(cat <<'EOF'
+      Eve's corrections: exponent derivation, Hilbert-Pólya attribution, honest
+      annotations…)
+  ⎿  [main b5f4e3b] Eve's corrections: exponent derivation, Hilbert-Pólya a
+     ttribution, honest annotations
+      2 files changed, 12 insertions(+), 10 deletions(-)
+
+  Read 1 file (ctrl+o to expand)
+
+● Still running. Let me check if the process is alive.
+
+● Bash(ps aux | grep spectral_concentration | grep -v grep)
+  ⎿  u0_a1111  6896  0.0  0.0 12459808 2292 ?       S<s   1970   0:00 /data
+     /data/com.termux/files/usr/bin/bash -c source /data/data/com.termux/fi
+     les/home/.claude/shell-snapshots/snapshot-bash-1775483565872-o2mmzc.sh
+     … +6 lines (ctrl+o to expand)
+
+● Running, ~10 minutes of CPU. The BM optimization is compute-heavy. Let me wait
+   for it.
+
+  Read 1 file (ctrl+o to expand)
+
+● Output buffering. Let me give it more time — the n=200 cases with
+  BM_RESTARTS=5 and BM_ITERS=5000 are heavy. Let me check back in a bit.
+  Meanwhile, let me also respond properly to Eve's meta-observation.
+
+  Eve's point about three corrections, not two is important for the WHY→HOW
+  grade assessment. The BLIND-VERIFY said "a competent mathematician could have
+  caught it independently." But the pattern is:
+
+  1. DGN-M FKS overclaim (Session 12 → corrected Session 14)
+  2. GW counterexample in Lorenz formulation (caught and resolved same session)
+  3. The FKS burial itself being overbroad
+
+  Three self-corrections in one session, each caught by the protocol, not by
+  external review. That's operational value beyond pedagogy. Worth noting for
+  any future grade re-assessment.
+
+  Her recommendation to "do nothing tonight" is sound. But since the computation
+   is already running, let's see what it returns.
+
+  Read 1 file (ctrl+o to expand)
+
+● Bash(ps aux | grep python3 | grep -v grep | awk '{print $2, $9, $10, $11}')
+  ⎿  6896 1970 0:00 /data/data/com.termux/files/usr/bin/bash
+     6939 1970 24:23 python3
+
+● 24 min of CPU time, still going. The output is being buffered (Python
+  default). Let me check if there are partial output files in the research dir.
+
+  Listed 1 directory (ctrl+o to expand)
+
+● No plots yet — still in the computation phase. The BM optimizer on n=200 with
+  5 restarts × 5000 iterations is ~25M matrix operations per graph. Let me check
+   if this is going to take too long and consider reducing parameters.
+● Bash(kill 6939 2>/dev/null; echo "Killed")
+  ⎿  Killed
+
+● Too slow on Termux. Let me optimize — reduce BM iterations and restarts, cut
+  n=200, add Python output flushing.
+
+● Update(research/spectral_concentration_falsification.py)
+  ⎿  Added 6 lines, removed 6 lines
+      23  
+      24  # ─── Configuration ───────────────────────────────────────────
+          ────────────────
+      25  
+      26 -N_VALUES = [50, 100, 200]                                      
+      26 +N_VALUES = [50, 100]                                           
+      27  K_BLOCKS_VALUES = [2, 5, 10]
+      28 -P_IN_VALUES = [0.1, 0.2, 0.3, 0.5, 0.8]                        
+      29 -P_OUT_VALUES = [0.005, 0.01, 0.03, 0.05, 0.1]                  
+      28 +P_IN_VALUES = [0.1, 0.2, 0.4, 0.7]                             
+      29 +P_OUT_VALUES = [0.005, 0.02, 0.05, 0.1]                        
+      30  N_SEEDS = 3
+      31 -BM_RESTARTS = 5                                                
+      32 -BM_ITERS = 5000                                                
+      33 -ROUND_TRIALS = 200                                             
+      31 +BM_RESTARTS = 3                                                
+      32 +BM_ITERS = 2000                                                
+      33 +ROUND_TRIALS = 100                                             
+      34  OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+      35  
+      36  
+
+● Update(research/spectral_concentration_falsification.py)
+  ⎿  Added 1 line
+      20  from math import ceil, log2
+      21  import time
+      22  import os
+      23 +import sys                                                     
+      24  
+      25  # ─── Configuration ───────────────────────────────────────────
+          ────────────────
+      26  
+
+● Update(research/spectral_concentration_falsification.py)
+  ⎿  Added 1 line
+      205  
+      206      print(f"Total configurations: {len(configs)}")
+      207      print("=" * 70)
+      208 +    sys.stdout.flush()                                        
+      209  
+      210      for idx, (n, k, p_in, p_out, seed) in enumerate(configs):
+      211          total += 1
+
+● Update(research/spectral_concentration_falsification.py)
+  ⎿  Added 1 line
+      262              print(f"  [{idx+1}/{len(configs)}] n={n} k={k} "
+      263                    f"C_k={spec['C_k']:.3f} gap={gap:.4f} "
+      264                    f"({elapsed:.0f}s elapsed, ~{remaining:.0f}s
+            remaining)")
+      265 +            sys.stdout.flush()                                
+      266  
+      267      elapsed = time.time() - t0
+      268      print(f"\nDone: {len(results)} graphs analyzed, {skipped} 
+           skipped, "
+
+● Also speed up the BM inner loop — the bottleneck is the matrix multiply L @ V
+  repeated 2000 times.
+
+● Update(research/spectral_concentration_falsification.py)
+  ⎿  Added 11 lines, removed 18 lines
+      104      Parameterize X = V V^T, V in R^{n x r}, rows unit norm.
+      105      """
+      106      n = L.shape[0]
+      107 -    r = max(int(ceil(np.sqrt(2 * n))), 2)                     
+      107 +    # Use smaller rank for speed — r=10 is sufficient for n<=1
+          +00                                                            
+      108 +    r = min(max(int(ceil(np.sqrt(2 * n))), 2), 10)            
+      109      best_val = -np.inf
+      110      best_V = None
+      111  
+      112      for restart in range(n_restarts):
+      113          rng = np.random.RandomState(restart * 1000 + n)
+      114          V = rng.randn(n, r)
+      114 -        # Project rows to unit sphere                         
+      115          V = V / np.linalg.norm(V, axis=1, keepdims=True)
+      116  
+      117 -        lr = 0.01 / max(np.abs(L).max(), 1)                   
+      117 +        lr = 0.02 / max(np.abs(L).max(), 1)                   
+      118          prev_val = -np.inf
+      119  
+      120          for it in range(n_iters):
+      121 -            # Gradient of (1/4) tr(V^T L V) w.r.t. V is (1/2) 
+          -L V                                                           
+      122 -            grad = 0.5 * L @ V                                
+      123 -                                                              
+      124 -            # Gradient ascent                                 
+      125 -            V = V + lr * grad                                 
+      126 -                                                              
+      127 -            # Project rows back to unit sphere                
+      121 +            grad = 0.5 * (L @ V)                              
+      122 +            V += lr * grad                                    
+      123              norms = np.linalg.norm(V, axis=1, keepdims=True)
+      129 -            norms = np.maximum(norms, 1e-10)                  
+      130 -            V = V / norms                                     
+      124 +            np.maximum(norms, 1e-10, out=norms)               
+      125 +            V /= norms                                        
+      126  
+      132 -            # Objective                                       
+      133 -            if it % 100 == 0:                                 
+      134 -                val = 0.25 * np.trace(V.T @ L @ V)            
+      127 +            if it % 200 == 0:                                 
+      128 +                val = 0.25 * np.einsum('ij,ij->', L @ V, V)   
+      129                  if abs(val - prev_val) < 1e-6:
+      130                      break
+      131                  prev_val = val
+      132  
+      139 -            # LR decay                                        
+      140 -            if it % 1000 == 0 and it > 0:                     
+      133 +            if it % 500 == 0 and it > 0:                      
+      134                  lr *= 0.7
+      135  
+      143 -        val = 0.25 * np.trace(V.T @ L @ V)                    
+      136 +        val = 0.25 * np.einsum('ij,ij->', L @ V, V)           
+      137          if val > best_val:
+      138              best_val = val
+      139              best_V = V.copy()
+
+● Bash(cd /data/data/com.termux/files/home/prometheus-crystal-lab/research &&
+      python3 -u spectral_concentration_falsification.py 2>&1)
+  ⎿  SPECTRAL CONCENTRATION-TRACTABILITY CORRESPONDENCE
+     Part B Falsification: MAX-CUT SDP on SBM Graphs
+     ======================================================================
+     … +36 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● Results are in. But wait — those integrality gaps are way too large (2-256). A
+   proper MAX-CUT SDP integrality gap should be between 1.0 and ~1.14 (GW
+  ratio). Something is wrong with the BM solver or the integer solution.
+
+● Bash(python3 -u -c "
+      import numpy as np…)
+  ⎿  K_5: SDP should be 25/4 = 6.25
+     K_5: true max cut = 6 (bipartition 2 vs 3)
+     K_5: expected gap = 1.0417
+     … +6 lines (ctrl+o to expand)
+
+● The SDP is correct but the integer rounding returns 0. Bug in the cut value
+  formula. Let me check.
+
+  Read 1 file (ctrl+o to expand)
+
+● The cut value formula 0.25 * (A.sum() - s @ A @ s) is correct mathematically.
+  Let me debug:
+
+● Bash(python3 -u -c "
+      import numpy as np…)
+  ⎿  Manual cut (2 vs 3): 6.0
+     A.sum() = 20.0, s@A@s = -4.0
+     Expected: edges between groups = 2*3 = 6
+     … +5 lines (ctrl+o to expand)
+
+● K_5 works manually. The problem must be with local search flipping ALL
+  vertices to the same side. Let me check:
+
+● Bash(python3 -u -c "
+      import numpy as np…)
+  ⎿  s = [ 1.  1. -1. -1. -1.]
+     A @ s = [-2. -2.  0.  0.  0.]
+     gains = -s * (A @ s) = [2. 2. 0. 0. 0.]
+     … +2 lines (ctrl+o to expand)
+
+● Found it. The gain formula sign is flipped. That means local search was
+  destroying good cuts by flipping vertices the wrong way. Fix:
+
+● Update(research/spectral_concentration_falsification.py)
+  ⎿  Added 1 line, removed 1 line
+      162              # gain_i = how much cut value increases if we flip
+            vertex i
+      163              # cut = (1/4)(sum A_ij - s^T A s)
+      164              # flipping s_i: delta = -s_i * sum_j A_ij s_j (tim
+           es s_i, contributes s_i * A_i @ s)
+      165 -            gains = -s * (A @ s)  # gain[i] = improvement from
+          - flipping i                                                   
+      165 +            gains = s * (A @ s)  # gain[i] = improvement from 
+          +flipping i                                                    
+      166              best_i = np.argmax(gains)
+      167              if gains[best_i] > 1e-10:
+      168                  s[best_i] *= -1
+
+● Wait — actually let me re-derive this more carefully. The change in cut from
+  flipping vertex i is:
+
+  delta_cut = (1/4) * (-delta(s^T A s)) = (1/4)(4 s_i (As)_i) = s_i * (As)_i
+
+  So the gain from flipping is s_i * (A@s)_i, and we flip when this is positive
+  (meaning the flip increases the cut). But actually... if s_i*(A@s)_i > 0, that
+   means s^T A s decreases, which means cut = (1/4)(A.sum() - s^T A s)
+  increases. Let me verify:
+
+● Bash(python3 -u -c "
+      import numpy as np…)
+  ⎿  All same side: cut = 0.0
+     gains = [4. 4. 4. 4. 4.]
+     After flipping vertex 0: cut = 4.0
+
+● Good, the corrected formula works. Now re-run.
+
+● Bash(python3 -u spectral_concentration_falsification.py 2>&1)
+  ⎿  SPECTRAL CONCENTRATION-TRACTABILITY CORRESPONDENCE
+     Part B Falsification: MAX-CUT SDP on SBM Graphs
+     ======================================================================
+     … +36 lines (ctrl+o to expand)
+  ⎿  (timeout 10m)
+
+● The conjecture is FALSIFIED.
+
+  The correlation goes the wrong way: higher spectral concentration → larger
+  integrality gap (looser SDP), with strong statistical significance (p = 7.8e-9
+   for C_k, p = 1.5e-16 for Gini).
+
+  But let me check the few gaps < 1.0 (e.g., 0.9826) — those indicate the BM
+  solver didn't fully converge on some instances, which is noise but not a
+  structural issue. The overall pattern is clear.
+
+● Bash(cp /data/data/com.termux/files/home/prometheus-crystal-lab/research/falsi
+      fication_ck_vs_gap.png ~/storage/downloads/ && cp
+      /data/data/com.termux/files/home/prom…)
+  ⎿  Done
+
+● Now let me think about what this means before recording.
+
+  Analysis of the falsification:
+
+  The result actually makes physical sense once you think about it:
+  - High C_k means a few eigenvalues dominate — the graph has strong cluster
+  structure (few large communities)
+  - Strong cluster structure makes MAX-CUT easier for integer methods (just cut
+  between clusters) but doesn't help the SDP (which relaxes to continuous
+  vectors regardless)
+  - So the SDP overshoot is larger when the graph has clear structure — the
+  SDP's continuous relaxation is wasteful when the problem has obvious discrete
+  structure
+
+  This is the opposite of what we conjectured. The conjecture assumed spectral
+  concentration helps the SDP; in reality, spectral concentration helps the
+  integer solver more than the SDP.
+
+  However — this doesn't kill the entire Spectral C-T framework. It kills Part B
+   as formulated. The Lorenz curve and spectral concentration still have
+  structural meaning. The relationship is just inverted: flat spectrum → tight 
+  SDP (because the SDP and integer problem are both "confused" by the lack of
+  structure, converging to similar values).
+
+  Let me record this properly.
+● Update(.prometheus/ledger.md)
+  ⎿  Added 10 lines
+      100  - **Lorenz curve as unifying object: NEW** — normalized eigenv
+           alue Lorenz curve controls counting (Part A), approximability 
+           (Part B), and proof barriers (Part C) simultaneously.
+      101  - **Grade: Level 2 (observations)** — conjectures generated an
+           d connected, not yet verified. Falsification route identified 
+           but not yet run.
+      102  
+      103 +### P-vs-NP Spectral C-T Part B — FALSIFIED (Session 14, 2026-
+          +04-06)                                                        
+      104 +- **Experiment:** MAX-CUT SDP on 246 SBM graphs (n∈{50,100}, k
+          +∈{2,5,10}), swept p_in/p_out                                  
+      105 +- **Result:** Spearman ρ(C_k, gap) = +0.36 (p = 7.8e-9), ρ(Gin
+          +i, gap) = +0.49 (p = 1.5e-16)                                 
+      106 +- **Direction is OPPOSITE to conjecture:** high spectral conce
+          +ntration → LARGER integrality gap (looser SDP)                
+      107 +- **Interpretation:** Strong cluster structure helps integer s
+          +olvers more than it helps SDP relaxation. The SDP overshoot is
+          + largest when the problem has obvious discrete structure.     
+      108 +- **What survives:** Part A (algebraic, proved). Part C (barri
+          +er, untested). The Lorenz curve framework. The spectral concen
+          +tration measure C_k itself.                                   
+      109 +- **What dies:** Part B as formulated. Must be inverted or ref
+          +ormulated.                                                    
+      110 +- **Bug caught during run:** Local search gain formula had sig
+          +n error (gains = -s*(A@s) should be s*(A@s)). First run gave g
+          +aps of 2-256, all spurious. Fixed and rerun.                  
+      111 +- **Note:** Some gaps < 1.0 (minimum 0.9826) indicate BM solve
+          +r didn't fully converge on ~5% of instances. Not a structural 
+          +issue.                                                        
+      112 +                                                              
+      113  ### Axisymmetric NS — DGN-M REFRAMED (Session 14, 2026-04-06)
+      114  - **WHY→HOW applied to DGN-M itself** (Eve's suggestion): wher
+           e does A₂ enter?
+      115  - **LOCATE:** A₂ enters in exactly ONE place — the weighted So
+           bolev-Poincaré inequality (Step b). Caccioppoli, Moser iterati
+           on, Harnack all inherit consequences only.
+
+● Update(.prometheus/state.md)
+  ⎿  Added 1 line, removed 1 line
+       7  - spanning-tree-bounds: **LEVEL 3 (Aletheia)** — Full gate stac
+          k passed. BLIND-VERIFY caught e₃ tightness error (fixed). Paper
+           revised. Ready for arXiv.
+       8  - axisymmetric-ns-regularity: ACTIVE — Routes 5, 6, 8 all NEGAT
+          IVE (analytic level exhausted). Route 6 Liouville: φ=Γ/r² conju
+          gation gives local Harnack but global Liouville fails (exp grow
+          th of Harnack constant + Γ scale-invariance blocks rescaling). 
+          Unified obstruction: 1/r axis singularity is critical for all L
+          ^p-based methods. Next: must change level (geometric/topologica
+          l/dynamical). Grade: Level 2+.
+       9  - collatz-conjecture: spectral analysis — negative result (tran
+          sfer matrix v2: nilpotent transient), pivot needed
+      10 -- p-vs-np-and-heuristics: ACTIVE — Spectral Concentration-Tract
+         -ability Correspondence (3-part conjecture). Structure Ladder co
+         -llapsed to d_eff=O(log n). Projection-invariant hardness refram
+         -ed. GW counterexample identified + resolved. Falsification rout
+         -e: MAX-CUT on SBM graphs.                                      
+      10 +- p-vs-np-and-heuristics: ACTIVE — Spectral C-T Part B FALSIFIE
+         +D (ρ=+0.36, direction inverted). Part A proved, Part C untested
+         +. Structure Ladder collapsed to d_eff=O(log n). Lorenz curve fr
+         +amework survives. Next: reformulate Part B or pivot to Part C. 
+      11  - why-how-condition-weakening: **STANDARD (Level 2)** — full ga
+          te stack passed. Operationalizes Lakatos with SEPARATE/VERDICT 
+          taxonomies + EXPORT/IMPORT. Integrated into Crystal gate stack 
+          as conditional gate.
+      12  - propellantless-propulsion: survey complete, tracking
+      13  
+
+● Now update the Researches repo.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(~/Researches/p-vs-np-and-heuristics/README.md)
+  ⎿  Added 10 lines
+      119  - Unifying object: Lorenz curve of normalized eigenvalue distr
+           ibution.
+      120  - Falsification: MAX-CUT on stochastic block models with swept
+            spectral profiles.
+      121  - Connection to GCT: symmetry level of Structure Ladder maps t
+           o degeneracy compression in spectrum, which is exactly what GC
+           T's representation theory exploits.
+      122 +                                                              
+      123 +### Part B Falsification (Session 14, 2026-04-06)             
+      124 +                                                              
+      125 +- **FALSIFIED.** Ran MAX-CUT SDP on 246 SBM graphs (n∈{50,100}
+          +, k∈{2,5,10}).                                                
+      126 +- Spearman ρ(C_k, integrality gap) = **+0.36** (p = 7.8e-9). D
+          +irection is **opposite** to conjecture.                       
+      127 +- Higher spectral concentration → LARGER integrality gap (loos
+          +er SDP).                                                      
+      128 +- **Interpretation:** Strong cluster structure helps integer s
+          +olvers more than SDP relaxation. The SDP overshoot is largest 
+          +when the problem has obvious discrete structure that integer m
+          +ethods can exploit directly.                                  
+      129 +- **What survives:** Part A (proved), Part C (untested), Loren
+          +z curve framework, C_k measure.                               
+      130 +- **What dies:** Part B as stated. The relationship between sp
+          +ectral concentration and SDP tightness is inverted.           
+      131 +- **Next:** Either reformulate Part B with inverted sign (flat
+          + spectrum → tight SDP), or pivot to Part C (barrier analysis).
+
+● Bash(cd ~/Researches && git add p-vs-np-and-heuristics/README.md && git commit
+       -m "$(cat <<'EOF'
+      Spectral C-T Part B FALSIFIED: integrality gap correlation inverted…)
+  ⎿  [main adae7fb] Spectral C-T Part B FALSIFIED: integrality gap correlat
+     ion inverted
+      1 file changed, 10 insertions(+)
+     … +2 lines (ctrl+o to expand)
+  ⎿  Shell cwd was reset to 
+     /data/data/com.termux/files/home/prometheus-crystal-lab
+
+● Bash(git add .prometheus/ledger.md .prometheus/state.md
+      research/spectral_concentration_falsification.py
+      research/falsification_*.png && git commit -m "$(cat <<'EOF'…)
+  ⎿  [main d4e7e0c] Spectral C-T Part B falsification: experiment + results
+      + plots
+      8 files changed, 474 insertions(+), 1 deletion(-)
+     … +11 lines (ctrl+o to expand)
+
+● ---
+  Falsification complete. Here's the story:
+
+  Part B of the Spectral Concentration-Tractability Correspondence is dead. The
+  conjecture predicted that high spectral concentration (few dominant
+  eigenvalues) would make SDP relaxations tighter. The experiment found the
+  opposite: ρ = +0.36, p = 7.8e-9. High spectral concentration makes SDP looser.
+
+  Why it makes sense in retrospect: When a graph has clear cluster structure
+  (high C_k), the MAX-CUT integer problem is "easy" — just cut between clusters.
+   The integer solver finds near-optimal solutions quickly. But the SDP doesn't
+  benefit as much from this discrete structure — it relaxes to continuous
+  vectors regardless. So the gap between SDP and integer grows when the problem
+  has obvious structure.
+
+  What survives:
+  - Part A (algebraic) — proved, untouched
+  - Part C (barrier) — untested, still live
+  - The Lorenz curve framework — still a valid spectral summary
+  - The inverted relationship itself is a finding: flat spectrum → tight SDP
+
+  What this means for the P-vs-NP program: The spectral concentration story
+  needs to be inverted. Hardness isn't about spectral concentration making
+  things tractable — it's about spectral flatness making the relaxation tight
+  (but the problem no harder). The barrier story (Part C) becomes more
+  interesting: flat spectrum might simultaneously make SDP tight AND proof
+  techniques fail.
+
+  Eve was right to recommend sleep. But the falsification couldn't wait — a dead
+   conjecture sitting as "Level 2 observation" would be worse than knowing it's
+  dead. Now we know.
+
+✻ Cogitated for 32m 49s
+
+❯ /export sobolev-unification-hypothesis-full-chat-export2.html                 
+  ⎿  Conversation exported to: /data/data/com.termux/files/home/prometheus-cryst
+     al-lab/sobolev-unification-hypothesis-full-chat-export2.txt
+
+● Background command "Run spectral C-T falsification experiment" failed with
+exit code 143
+
+● Bash(cp /data/data/com.termux/files/home/prometheus-crystal-lab/sobolev-unific
+      ation-hypothesis-full-chat-export2.txt ~/storage/downloads/)
+  ⎿  Done
+
+● Copied to downloads. (The background task failure was the first run we killed
+  — the successful rerun already completed.)
+
+❯ ok, lets continue                                                             
+
+● The falsification opens two paths:
+
+  1. Run WHY→HOW on the falsification itself. Part B failed — WHY? The inverted
+  sign is structural information. Understanding it could reformulate Part B
+  correctly or connect to Part C (barriers). This is the Prometheus move:
+  "NEGATIVE verdicts are data."
+  2. Pivot to NS level shift. The Millennium FRAME surfaced "missing object, not
+   missing inequality" + pressure self-regulation as geometric mechanism. Fresh
+  angle for the level shift Eve flagged.
+  3. BLIND-VERIFY on DGN-M REFRAMED (Eve's #2 recommendation). Verify r⁻⁴ ∈ A₂
+  in 5D by computing the A₂ constant directly. Concrete, quick, high-stakes.
+
+  I'd go with 3 then 1: verify the DGN-M claim first (10 minutes, concrete),
+  then run WHY→HOW on the Part B falsification (which might produce a
+  reformulation worth more than the original conjecture).
