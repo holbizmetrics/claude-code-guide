@@ -252,7 +252,7 @@ class Session:
         """Get a one-line summary (first meaningful user message). Fast: reads first ~50 lines only."""
         if self._parsed:
             for m in self.messages:
-                if m.role == "user" and len(m.text) > 5:
+                if m.role == "user" and len(m.text) > 5 and not m.text.lower().startswith("this session is being continued from a previous conversation"):
                     clean = m.text.replace("\n", " ").replace("\r", " ")
                     clean = re.sub(r"\s+", " ", clean).strip()
                     return clean[:max_len] + "..." if len(clean) > max_len else clean
@@ -275,7 +275,7 @@ class Session:
                     role = msg_data.get("role", obj.get("type", ""))
                     if role == "user":
                         text = self._extract_text(msg_data.get("content", ""))
-                        if text and len(text) > 5 and "<system-reminder>" not in text:
+                        if text and len(text) > 5 and "<system-reminder>" not in text and not text.lower().startswith("this session is being continued from a previous conversation"):
                             clean = text.replace("\n", " ").replace("\r", " ")
                             clean = re.sub(r"\s+", " ", clean).strip()
                             return clean[:max_len] + "..." if len(clean) > max_len else clean
@@ -394,6 +394,8 @@ def _h_meaningful_ask(t):
     if len(t) < 12:
         return False
     low = t.lower()
+    if low.startswith("this session is being continued from a previous conversation"):
+        return False  # compaction-continuation summary is not a real ask
     if low.startswith("boot ") or ("boot up" in low and "from" in low):
         return False
     if low.startswith("base directory for this skill"):

@@ -1112,3 +1112,20 @@ def test_subagent_prose_slashes_fall_through_to_cascade():
 def test_subagent_real_path_is_front_loaded():
     head = cc._compute_headline(_FakeSubagentSession("Survey the repo at C:\\Repo\\Prometheus-Field"))
     assert head.startswith("Survey Prometheus-Field")
+
+
+def test_meaningful_ask_rejects_continuation_summary():
+    cont = ("This session is being continued from a previous conversation that ran "
+            "out of context. The conversation is summarized below: ...")
+    assert cc._h_meaningful_ask(cont) is False
+
+
+def test_summary_skips_continuation_summary(tmp_path):
+    jsonl = _write_jsonl(tmp_path, "cont.jsonl", [
+        _user_line("This session is being continued from a previous conversation "
+                   "that ran out of context. The conversation is summarized below: ..."),
+        _user_line("Fix the parser bug in main.py please"),
+    ])
+    out = cc.Session(jsonl).summary()
+    assert "continued from a previous" not in out.lower()
+    assert out.startswith("Fix the parser bug")
