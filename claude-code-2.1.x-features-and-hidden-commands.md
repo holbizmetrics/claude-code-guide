@@ -47,6 +47,21 @@ turn's reasoning; `ultracode` opts the turn into Workflow orchestration.
 **Toggle:** the ultracode trigger can be disabled via the user setting
 `workflowKeywordTriggerEnabled` ("Ultracode keyword trigger", boolean). **[binary]**
 
+### How to invoke (no parameters — they're switches, not functions)
+
+Neither keyword takes arguments. You just make the word appear in an ordinary prompt:
+
+- **`ultrathink`** — type it anywhere in a message (start, middle, or end); matched on a
+  word boundary, so *presence* is all that matters. No tunable budget — it's max-or-nothing
+  for that turn. Lowercase is the safe form. Confirmation: the rainbow render.
+- **`ultracode`** — two ways: (1) the **keyword** in a prompt → opts *that turn* into the
+  Workflow tool; (2) **`/effort ultracode`** → sets it for the whole **session** (persistent).
+  Confirmation: a system-reminder when recognized.
+- **The parameterized path is the slash command, not the keyword:** `/effort <tier>` takes
+  `low | medium | high | xhigh | max | ultracode`. The keywords themselves are presence flags.
+- The two are **orthogonal** — usable together in one prompt (`ultrathink` = max reasoning,
+  `ultracode` = workflow orchestration) — and both are Claude Code (terminal) only.
+
 ### These two ARE the whole family — the rest is folklore (binary-verified)
 
 A v2.1.162 string count settles it: `ultrathink` (19 occurrences) and `ultracode` (101) are
