@@ -128,11 +128,49 @@ The clean, cross-checked built-in set (the contrast class to the hidden keywords
 own `/help` on a *clean* profile is the authoritative per-install list — a profile with
 many skills installed will hide some of these from the dropdown (category 2).
 
-`/help` · `/clear` · `/compact` · `/config` · `/cost` · `/doctor` · `/status` · `/init` ·
-`/memory` · `/model` · `/permissions` · `/hooks` · `/mcp` · `/agents` · `/skills` ·
-`/resume` · `/export` · `/login` · `/logout` · `/bug` · `/vim` · `/terminal-setup` ·
-`/release-notes` · and the newer **`/effort` · `/fast` · `/rewind` · `/loop` ·
-`/install-github-app` · `/code-review`**.
+Descriptions below are the **binary's own wording (v2.1.162)** where it exposes one; the
+rest are concise accurate summaries.
+
+**Conversation & context**
+- `/clear` — clear the conversation and start fresh
+- `/compact` — "Free up context by summarizing the conversation so far"
+- `/export` — "Export the current conversation to a file or clipboard"
+- `/copy` — "Copy Claude's last response to clipboard (or `/copy N` for the Nth-latest)"
+- `/rewind` — "Restore the code and/or conversation to a previous point" (checkpoint restore)
+- `/resume` — "Resume a previous conversation"
+- `/rename` — "Rename the current conversation"
+- `/memory` — "Edit Claude memory files" (your CLAUDE.md)
+
+**Inspect & configure**
+- `/help` — list commands and help
+- `/status` — session / account status
+- `/cost` — "Cost of the Claude Code session"
+- `/config` — settings (e.g. "Configure the auto-compact window size", break reminders)
+- `/model` — view / switch the current model
+- `/effort` — set reasoning effort (low = "Fast and efficient for simple tasks", medium =
+  "Balanced performance — best for most agents", … up to `ultracode`)
+- `/doctor` — "Diagnose and verify your Claude Code installation and settings"
+- `/permissions` — "Manage allow & deny tool permission rules"
+- `/hooks` — configure hooks · `/mcp` — "Manage MCP servers" · `/agents` — "Manage agent
+  configurations" · `/skills` — "List available skills" · `/ide` — "Manage IDE integrations
+  and show status"
+- `/vim` — vim editing mode · `/terminal-setup` — configure terminal key bindings
+
+**Automation & workflows**
+- `/workflows` — "Browse dynamic workflow history (running and completed)"
+- `/loop` — "List, create, and delete recurring loops and stop-hooks"
+- `/schedule` — "Create and manage scheduled remote Claude Code agents"
+- `/ultraplan` — "Claude Code on the web drafts a plan you can edit and approve"
+- `/code-review` — review the current diff (`/code-review ultra` = cloud multi-agent)
+- `/security-review` — "Complete a security review of the pending changes on the current branch"
+- `/fast` — toggle Fast mode (faster Opus output)
+- `/btw` — "Ask a quick side question without interrupting the main conversation" *(handy + obscure)*
+
+**Account & setup**
+- `/login` · `/logout` — authentication
+- `/init` — initialize a project `CLAUDE.md`
+- `/install-github-app` — install the GitHub app · `/bug` / `/feedback` — report a bug / feedback
+- `/release-notes` — show what changed in recent versions
 
 > **Caveat on "all `/` strings":** the binary bundles the AWS Bedrock SDK and skill/example
 > text, so a raw grep for `"/word"` also returns API routes (`/model-invocation-jobs`,
