@@ -27,23 +27,46 @@ not announced in the menu."
 
 ---
 
-## 1. Thinking keywords (category 3 — prompt text, never in the `/` menu)
+## 1. The keyword-trigger family (category 3 — the must-memorize set)
 
-Escalating reasoning budget. Type the phrase anywhere in your message; it applies to that
-turn only.
+These are typed as ordinary prompt text — never `/`-prefixed, so they **never appear in the
+`/` menu**, yet Claude Code pattern-matches them on input and acts. This is the set you have
+to *know*, because nothing in the UI lists them.
 
-| Keyword | Tier | Notes |
-|---|---|---|
-| `think` | basic extended thinking | **[binary/first-party]** |
-| `think hard` / `think harder` | more | **[folklore on exact budget]** |
-| `megathink` | more still | **[folklore]** — community-named, not in official docs |
-| **`ultrathink`** | **maximum** | **[binary]** — rainbow-rendered, the flagship hidden keyword |
+### The two real keyword triggers (binary-confirmed in v2.1.162)
 
-- The rainbow render of `ultrathink` is the recognition signal. **[first-party]**
-- Token-budget numbers circulated online (~4k … ~32k) are **community reverse-engineering,
-  not official**, and Claude 4.x uses *adaptive* thinking that sets depth automatically —
-  so treat the ordering as real and the exact numbers as folklore. **[folklore]**
-- These are Claude Code (terminal) only; typing them in the claude.ai web UI does nothing.
+| Keyword | What it does | The "tell" | Evidence |
+|---|---|---|---|
+| **`ultrathink`** | Maximum reasoning budget **for that turn** | **Auto-renders in animated rainbow text, always** — the recognition signal | **[binary]** — `/\bultrathink\b/` regex + `tengu_ultrathink` event in the binary |
+| **`ultracode`** | Flips the **whole session** to xhigh effort **+ automatic workflow orchestration** (fans work out to subagents) | Emits a system-reminder confirming it was recognized | **[binary]** — `Enable the "ultracode" keyword trigger` / `Whether ultracode (xhigh effort plus…)` |
+
+`ultracode` is the true sibling of `ultrathink`: identical "type-it-in-a-prompt, not-a-
+command, not-in-the-menu" behavior. The only difference is scope — `ultrathink` lasts one
+turn, `ultracode` lasts the session.
+
+### Lower thinking tiers (partial confirmation — don't overtrust)
+
+- `think`, `think hard` / `think harder` — plausibly real (escalating thinking), but **not
+  isolable in the binary** ("think" is too common to grep). Ordering likely; the exact
+  budgets are **folklore** — the ~4k…~32k numbers online are community reverse-engineering,
+  and Claude 4.x uses *adaptive* thinking that sets depth automatically.
+- **`megathink` — NOT found in the v2.1.162 binary at all. Treat as folklore / likely
+  fictional**, despite appearing in circulating community lists.
+- Keyword triggers are Claude Code (terminal) only — they do nothing in the claude.ai web UI.
+
+### Prompt-prefix modes (recognized, but semi-hinted — not fully hidden)
+
+Typed at the **start** of a message; the input box usually flashes a hint, so these are
+semi-discoverable rather than memorize-or-lose:
+
+- **`#` → memory mode** — adds the line to memory (CLAUDE.md). **[binary]** (`memory mode`).
+- **`!` → bash mode** — runs the rest of the line as a shell command inline. **[first-party]**
+
+### Unconfirmed — do NOT rely on as "100% valid"
+
+- The **`+500k`-style token-budget directive** is referenced in the agent/workflow tooling
+  (first-party), but the literal `+500k` syntax was **not found** as a string in the binary,
+  so its status as a typed UI directive is unconfirmed here. **[unconfirmed]**
 
 ---
 
@@ -56,7 +79,8 @@ from older guides.
 - **`/effort low|medium|high|xhigh|max|ultracode`** (effort ×771) — set reasoning effort.
   `ultracode` (×117) is the top tier: `xhigh` reasoning **plus automatic workflow
   orchestration** (it fans work out to subagents on substantive tasks). Also settable via
-  `effortLevel` in settings.json and exposed to skills as `${CLAUDE_EFFORT}`.
+  `effortLevel` in settings.json and exposed to skills as `${CLAUDE_EFFORT}`. **Note:**
+  `ultracode` is *also* a typed keyword trigger (just type it in a prompt) — see §1.
 - **Dynamic workflows** (dynamic workflow ×93) — the fan-out system: author a script that
   spawns many subagents (parallel/pipeline stages), runs in the background, watch/pause/
   resume via `/workflows`. The engine behind `ultracode`'s auto-orchestration.
