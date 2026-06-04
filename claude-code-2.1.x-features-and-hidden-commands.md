@@ -38,20 +38,29 @@ to *know*, because nothing in the UI lists them.
 | Keyword | What it does | The "tell" | Evidence |
 |---|---|---|---|
 | **`ultrathink`** | Maximum reasoning budget **for that turn** | **Auto-renders in animated rainbow text, always** — the recognition signal | **[binary]** — `/\bultrathink\b/` regex + `tengu_ultrathink` event in the binary |
-| **`ultracode`** | Flips the **whole session** to xhigh effort **+ automatic workflow orchestration** (fans work out to subagents) | Emits a system-reminder confirming it was recognized | **[binary]** — `Enable the "ultracode" keyword trigger` / `Whether ultracode (xhigh effort plus…)` |
+| **`ultracode`** | Typed as a **keyword**, opts **that turn** into the **Workflow tool** (auto-orchestration / fan-out to subagents). *Session-wide* xhigh+workflow is the separate `/effort ultracode` path, **not** the keyword. | Emits a system-reminder confirming it was recognized | **[binary]** — `Enable the "ultracode" keyword trigger: including the keyword in a prompt opts that turn into the Workflow tool` |
 
-`ultracode` is the true sibling of `ultrathink`: identical "type-it-in-a-prompt, not-a-
-command, not-in-the-menu" behavior. The only difference is scope — `ultrathink` lasts one
-turn, `ultracode` lasts the session.
+Both are siblings: identical "type-it-in-a-prompt, not-a-command, not-in-the-menu,
+**turn-scoped**" behavior. They differ only in *what* they do — `ultrathink` maxes the
+turn's reasoning; `ultracode` opts the turn into Workflow orchestration.
 
-### Lower thinking tiers (partial confirmation — don't overtrust)
+**Toggle:** the ultracode trigger can be disabled via the user setting
+`workflowKeywordTriggerEnabled` ("Ultracode keyword trigger", boolean). **[binary]**
 
-- `think`, `think hard` / `think harder` — plausibly real (escalating thinking), but **not
-  isolable in the binary** ("think" is too common to grep). Ordering likely; the exact
-  budgets are **folklore** — the ~4k…~32k numbers online are community reverse-engineering,
-  and Claude 4.x uses *adaptive* thinking that sets depth automatically.
-- **`megathink` — NOT found in the v2.1.162 binary at all. Treat as folklore / likely
-  fictional**, despite appearing in circulating community lists.
+### These two ARE the whole family — the rest is folklore (binary-verified)
+
+A v2.1.162 string count settles it: `ultrathink` (19 occurrences) and `ultracode` (101) are
+the **only** keyword triggers present. **Every other circulating phrase returned 0
+occurrences:** `megathink`, `think hard`, `think harder`, `think really hard`, `think super
+hard`, `think very hard`, `think intensely`, `think longer`, `keep thinking`, `think
+deeply`, `think a lot`, `think more`, `think step by step`, `ultra think` — **all absent.**
+So `megathink` and the whole `think …` tier ladder are **NOT recognized triggers in this
+version** — they are folklore from older builds / community lists. The exact token-budget
+numbers quoted for them online are community reverse-engineering; Claude 4.x uses *adaptive*
+thinking that sets depth automatically.
+
+- **Live test:** only a recognized trigger rainbow-renders. If a phrase does not go rainbow
+  when you type it, it is not a trigger.
 - Keyword triggers are Claude Code (terminal) only — they do nothing in the claude.ai web UI.
 
 ### Prompt-prefix modes (recognized, but semi-hinted — not fully hidden)
