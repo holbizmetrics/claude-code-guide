@@ -10,6 +10,7 @@ python3 claude-chat.py list                          # See all your sessions
 python3 claude-chat.py search "react hooks"          # Search across everything
 python3 claude-chat.py export a7e44ed0 --format html # Export with dark theme
 python3 claude-chat.py serve                         # Browse in your browser
+python3 claude-chat.py wiki --open                   # Static, searchable HTML archive
 python3 claude-chat.py backup --watch                # Continuous backup
 python3 claude-chat.py protect                       # Stop auto-deletion
 ```
@@ -25,6 +26,9 @@ Your conversations contain ideas, decisions, and code you can't reconstruct. Thi
 ```bash
 # Just download one file. That's it.
 curl -O https://raw.githubusercontent.com/holbizmetrics/claude-code-guide/master/tool/claude-chat.py
+
+# Or grab a tagged release bundle — script + COOKBOOK + docs, zipped:
+# https://github.com/holbizmetrics/claude-code-guide/releases/latest
 
 # Or clone the whole repo
 git clone https://github.com/holbizmetrics/claude-code-guide.git
@@ -92,7 +96,7 @@ Every user message, chronologically. Works like a journal of what you were think
 ```
 python3 claude-chat.py serve
 ```
-Opens a local web UI at `http://127.0.0.1:3456`. Click around sessions, search, read. Localhost only — don't expose it.
+Opens a local web UI at `http://127.0.0.1:3456`. Click around sessions, search, read. Localhost only — don't expose it. (Want a *permanent*, offline, shareable version? `wiki --open` builds a static searchable HTML archive — same browsing, no server.)
 
 **10. Continuous backup in the background.**
 ```
@@ -204,6 +208,18 @@ python3 claude-chat.py serve --no-open           # Don't auto-open browser
 Dark-themed web UI with search, clickable sessions, and full conversation view.
 
 > **Security note:** The server has no authentication and binds to localhost only. Do not forward the port or expose it on a network — your conversations may contain sensitive code and credentials.
+
+### `wiki` — Build a static, searchable HTML archive
+
+```
+python3 claude-chat.py wiki                       # Build to ~/claude-chat-wiki
+python3 claude-chat.py wiki --open                # Build and open in browser
+python3 claude-chat.py wiki -o ./my-archive       # Custom output directory
+python3 claude-chat.py wiki --project crystal     # Only one project
+python3 claude-chat.py wiki --rich                # KaTeX math, tables, auto-links
+```
+
+Like `serve`, but **static** — no server, nothing to keep running. Produces a folder of self-contained HTML: one cross-linked page per session (8-char session IDs become links to sibling pages, with a "Referenced by" backlinks footer), plus an `index.html` with **built-in client-side search** (message bodies *and* tool-call inputs are indexed). Open `index.html` straight from disk, search offline, or hand the whole folder to someone else. Rule of thumb: `serve` to browse live, `wiki` to keep or share.
 
 ### `protect` — Stop Claude Code from deleting your sessions
 
