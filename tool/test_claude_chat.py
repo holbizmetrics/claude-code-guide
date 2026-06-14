@@ -1225,3 +1225,34 @@ def test_extract_turns_emits_jsonl(tmp_path, capsys):
     asst = [r for r in recs if r["role"] == "assistant"]
     assert asst[0]["model"] == "claude-fable-5"
     assert asst[0]["tools"] == ["Read"]
+
+
+def test_per_session_profiles_groups_by_model(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    rows = cc.per_session_profiles([s])
+    assert len(rows) == 1                      # one session
+    sess, by_model = rows[0]
+    assert set(by_model) == {"claude-fable-5", "claude-opus-4-8"}
+    assert by_model["claude-fable-5"]["turns"] == 1
+
+
+def test_per_session_profiles_model_filter(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    rows = cc.per_session_profiles([s], "fable")
+    assert len(rows) == 1
+    assert set(rows[0][1]) == {"claude-fable-5"}   # opus filtered out
+
+
+def test_profile_to_dict_is_json_safe(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    turns = cc.collect_turns([s], "fable")["claude-fable-5"]
+    d = cc.profile_to_dict(cc.behavioral_profile(turns))
+    assert isinstance(d["first_tools"], dict)      # Counter -> dict
+    json.dumps(d)                                   # must not raise
+
+
+def test_profile_line_flags_small_sample(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    turns = cc.collect_turns([s], "fable")["claude-fable-5"]   # 1 turn
+    line = cc.profile_line("claude-fable-5", cc.behavioral_profile(turns))
+    assert "n<5" in line                            # small-sample warning present

@@ -1667,6 +1667,48 @@ def format_profile(label, p):
     ])
 
 
+def profile_line(label, p):
+    """One-line profile summary for the per-session (replication) view.
+
+    Flags small samples (n<5) — the n=1 case that's statistically useless and had
+    to be called out by hand in the manual replication table.
+    """
+    ft = p["first_tools"].most_common(1)
+    top = f"{ft[0][0]} {100 * ft[0][1] / p['tool_turns']:.0f}%" if (ft and p["tool_turns"]) else "-"
+    warn = " !n<5" if p["turns"] < 5 else ""
+    return (f"  {label:<20} turns={p['turns']:>3}{warn:<5} reason={p['reasoning_pct']:>3.0f}% "
+            f"tba={p['think_before_action_pct']:>3.0f}% tools/turn={p['tool_calls_per_turn']:>4.2f} "
+            f"narr={p['avg_text_chars']:>4.0f} 1st-tool={top}")
+
+
+def profile_to_dict(p):
+    """JSON-safe version of a behavioral_profile() dict (Counter -> dict)."""
+    d = {k: v for k, v in p.items() if k != "first_tools"}
+    d["first_tools"] = dict(p["first_tools"])
+    return d
+
+
+def per_session_profiles(sessions, model_filter=None):
+    """Per-session replication data: list of (session, {model: profile}) for each
+    session that has matching turns. This is the view that exposes confounds —
+    a metric that holds across rows is robust; one that swings is task-driven.
+    """
+    out = []
+    nl = model_filter.lower() if model_filter else None
+    for s in sessions:
+        s.parse()
+        groups = {}
+        for t in s.turns:
+            if not t.model:
+                continue
+            if nl and nl not in t.model.lower():
+                continue
+            groups.setdefault(t.model, []).append(t)
+        if groups:
+            out.append((s, {m: behavioral_profile(ts) for m, ts in groups.items()}))
+    return out
+
+
 # ─── Commands ────────────────────────────────────────────────────────────────
 
 class Command:
@@ -2222,9 +2264,36 @@ class ProfileCommand(Command):
             print("No sessions found.")
             return
 
-        groups = collect_turns(sessions, getattr(args, "model", None))
+        model_filter = getattr(args, "model", None)
+        fmt = getattr(args, "format", "text")
+
+        # --by-session: one row-group per session (the replication / confound view).
+        if getattr(args, "by_session", False):
+            rows = per_session_profiles(sessions, model_filter)
+            if not rows:
+                print("No assistant turns matched.")
+                return
+            if fmt == "json":
+                print(json.dumps([
+                    {"session": s.short_id, "project": s.project,
+                     "date": s.modified.strftime("%Y-%m-%d"),
+                     "models": {m: profile_to_dict(p) for m, p in d.items()}}
+                    for s, d in rows], indent=2))
+                return
+            print(f"Per-session profile ({len(rows)} session(s)) — read down a metric for replication:\n")
+            for s, d in rows:
+                print(f"{s.short_id}  {s.modified.strftime('%Y-%m-%d')}  [{s.project[:34]}]")
+                for m in sorted(d, key=lambda k: -d[k]['turns']):
+                    print(profile_line(m, d[m]))
+                print()
+            return
+
+        groups = collect_turns(sessions, model_filter)
         if not groups:
             print("No assistant turns matched.")
+            return
+        if fmt == "json":
+            print(json.dumps({m: profile_to_dict(behavioral_profile(ts)) for m, ts in groups.items()}, indent=2))
             return
 
         scope = f"session {sessions[0].short_id}" if in_session_id else f"{len(sessions)} session(s)"
@@ -2255,18 +2324,54 @@ class CompareCommand(Command):
             print("No sessions found.")
             return
 
-        a_flat = [t for ts in collect_turns(sessions, args.model_a).values() for t in ts]
-        b_flat = [t for ts in collect_turns(sessions, args.model_b).values() for t in ts]
+        A, B = args.model_a, args.model_b
+        fmt = getattr(args, "format", "text")
+
+        # --by-session: A vs B per session (the replication view — was hand-built before).
+        if getattr(args, "by_session", False):
+            rows = []
+            for s in sessions:
+                s.parse()
+                a = [t for t in s.turns if t.model and A.lower() in t.model.lower()]
+                b = [t for t in s.turns if t.model and B.lower() in t.model.lower()]
+                if a or b:
+                    rows.append((s, behavioral_profile(a) if a else None,
+                                 behavioral_profile(b) if b else None))
+            if not rows:
+                print(f'No turns matched "{A}" or "{B}".')
+                return
+            if fmt == "json":
+                print(json.dumps([
+                    {"session": s.short_id, "date": s.modified.strftime("%Y-%m-%d"),
+                     A: profile_to_dict(pa) if pa else None,
+                     B: profile_to_dict(pb) if pb else None}
+                    for s, pa, pb in rows], indent=2))
+                return
+            print(f'Per-session compare "{A}" vs "{B}" ({len(rows)} session(s)) — read down for replication:\n')
+            for s, pa, pb in rows:
+                print(f"{s.short_id}  {s.modified.strftime('%Y-%m-%d')}  [{s.project[:34]}]")
+                if pa:
+                    print(profile_line(A, pa))
+                if pb:
+                    print(profile_line(B, pb))
+                print()
+            return
+
+        a_flat = [t for ts in collect_turns(sessions, A).values() for t in ts]
+        b_flat = [t for ts in collect_turns(sessions, B).values() for t in ts]
         if not a_flat:
-            print(f'No turns matched model "{args.model_a}".')
+            print(f'No turns matched model "{A}".')
             return
         if not b_flat:
-            print(f'No turns matched model "{args.model_b}".')
+            print(f'No turns matched model "{B}".')
             return
 
         pa, pb = behavioral_profile(a_flat), behavioral_profile(b_flat)
+        if fmt == "json":
+            print(json.dumps({A: profile_to_dict(pa), B: profile_to_dict(pb)}, indent=2))
+            return
         scope = f"session {sessions[0].short_id}" if in_session_id else f"{len(sessions)} session(s)"
-        print(f'Compare "{args.model_a}" vs "{args.model_b}" over {scope}:\n')
+        print(f'Compare "{A}" vs "{B}" over {scope}:\n')
 
         rows = [
             ("turns (responses)", str(pa["turns"]), str(pb["turns"])),
@@ -3224,6 +3329,8 @@ Examples:
     p.add_argument("--project", "-p", help="Filter by project name")
     p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
     p.add_argument("--model", "-m", help="Restrict to models matching this substring")
+    p.add_argument("--by-session", dest="by_session", action="store_true", help="One row-group per session (replication / confound view)")
+    p.add_argument("--format", choices=["text", "json"], default="text", help="Output format (json for charting/piping)")
 
     # compare — two-model delta table
     p = sub.add_parser("compare", aliases=["diff"], help="Compare two models' behavioral profiles (delta table)")
@@ -3231,6 +3338,8 @@ Examples:
     p.add_argument("model_b", help="Second model (substring, e.g. opus)")
     p.add_argument("--project", "-p", help="Filter by project name")
     p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
+    p.add_argument("--by-session", dest="by_session", action="store_true", help="A vs B per session (replication / confound view)")
+    p.add_argument("--format", choices=["text", "json"], default="text", help="Output format (json for charting/piping)")
 
     # serve
     p = sub.add_parser("serve", aliases=["web", "browse"], help="Browse in your browser")
