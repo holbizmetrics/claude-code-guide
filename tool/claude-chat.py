@@ -2516,6 +2516,12 @@ class ServeCommand(Command):
                     self._serve_session(session_id)
                 elif path == "/search":
                     self._serve_search(query)
+                elif path == "/profile":
+                    self._serve_profile(query)
+                elif path == "/compare":
+                    self._serve_compare(query)
+                elif path == "/activity":
+                    self._serve_activity(query)
                 else:
                     self.send_error(404)
 
@@ -2524,6 +2530,128 @@ class ServeCommand(Command):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(html_content.encode("utf-8"))
+
+            def _send_json(self, obj):
+                # ?format=json on any analytics page = report export (pipe/download).
+                body = json.dumps(obj, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(body)
+
+            @staticmethod
+            def _analytics_page(title, body_html):
+                nav = ('<a href="/">home</a> &middot; <a href="/profile">profile</a> &middot; '
+                       '<a href="/compare?a=fable&b=opus">compare</a> &middot; '
+                       '<a href="/activity?by_model=1">activity</a>')
+                return (
+                    f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title><style>'
+                    'body{background:#1a1b26;color:#c0caf5;font-family:-apple-system,Segoe UI,monospace;padding:20px;}'
+                    'a{color:#7aa2f7;text-decoration:none;}a:hover{text-decoration:underline;}'
+                    'h1{color:#7aa2f7;font-size:1.2em;}.nav{margin-bottom:16px;color:#565f89;}'
+                    'table{border-collapse:collapse;margin:10px 0;}'
+                    'th,td{border:1px solid #3b4261;padding:5px 10px;text-align:left;font-size:0.9em;}'
+                    'th{color:#7aa2f7;background:#24283b;}.ex{color:#565f89;font-size:0.8em;margin-top:12px;}'
+                    'form{margin-bottom:12px;}input{background:#24283b;color:#c0caf5;border:1px solid #3b4261;'
+                    'padding:4px 8px;border-radius:4px;}button{background:#24283b;color:#7aa2f7;'
+                    'border:1px solid #3b4261;padding:4px 10px;border-radius:4px;cursor:pointer;}'
+                    f'</style></head><body><div class="nav">{nav}</div><h1>{title}</h1>{body_html}'
+                    '<div class="ex">Append <code>?format=json</code> to export the raw report.</div>'
+                    '</body></html>')
+
+            def _serve_profile(self, query):
+                model = query.get("model", [None])[0]
+                fmt = query.get("format", ["html"])[0]
+                by_session = query.get("by_session", ["0"])[0] in ("1", "true", "on", "yes")
+                sessions = find_all_sessions()
+                if by_session:
+                    rows = per_session_profiles(sessions, model)
+                    if fmt == "json":
+                        self._send_json([{"session": s.short_id, "date": s.modified.strftime("%Y-%m-%d"),
+                                          "project": s.project,
+                                          "models": {m: profile_to_dict(p) for m, p in d.items()}}
+                                         for s, d in rows])
+                        return
+                    cells = []
+                    for s, d in rows:
+                        for m, p in sorted(d.items(), key=lambda kv: -kv[1]["turns"]):
+                            cells.append(
+                                f"<tr><td>{s.short_id}</td><td>{s.modified.strftime('%Y-%m-%d')}</td>"
+                                f"<td>{html_mod.escape(m)}</td><td>{p['turns']}</td>"
+                                f"<td>{p['reasoning_pct']:.0f}%</td><td>{p['think_before_action_pct']:.0f}%</td>"
+                                f"<td>{p['tool_calls_per_turn']:.2f}</td><td>{p['avg_text_chars']:.0f}</td></tr>")
+                    body = ('<table><tr><th>session</th><th>date</th><th>model</th><th>turns</th>'
+                            '<th>reason%</th><th>tba%</th><th>tools/turn</th><th>narr</th></tr>'
+                            + "".join(cells) + '</table>')
+                else:
+                    groups = collect_turns(sessions, model)
+                    if fmt == "json":
+                        self._send_json({m: profile_to_dict(behavioral_profile(ts)) for m, ts in groups.items()})
+                        return
+                    cells = []
+                    for m, ts in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+                        p = behavioral_profile(ts)
+                        top = ", ".join(f"{n}:{c}" for n, c in p["first_tools"].most_common(5)) or "-"
+                        cells.append(
+                            f"<tr><td>{html_mod.escape(m)}</td><td>{p['turns']}</td>"
+                            f"<td>{p['reasoning_pct']:.0f}%</td><td>{p['think_before_action_pct']:.0f}%</td>"
+                            f"<td>{p['tool_calls_per_turn']:.2f}</td><td>{p['avg_text_chars']:.0f}</td>"
+                            f"<td>{p['avg_think_chars']:.0f}</td><td>{html_mod.escape(top)}</td></tr>")
+                    body = ('<table><tr><th>model</th><th>turns</th><th>reason%</th><th>tba%</th>'
+                            '<th>tools/turn</th><th>narr</th><th>think-chars</th><th>top first-tools</th></tr>'
+                            + "".join(cells) + '</table>')
+                form = ('<form method="get"><input name="model" placeholder="model substring (e.g. fable)" value="'
+                        + html_mod.escape(model or "") + '"> <label><input type="checkbox" name="by_session" value="1"'
+                        + (' checked' if by_session else '') + '> by-session</label> <button>go</button></form>')
+                self._send_html(self._analytics_page("profile", form + body))
+
+            def _serve_compare(self, query):
+                A = query.get("a", ["fable"])[0]
+                B = query.get("b", ["opus"])[0]
+                fmt = query.get("format", ["html"])[0]
+                sessions = find_all_sessions()
+                a = [t for ts in collect_turns(sessions, A).values() for t in ts]
+                b = [t for ts in collect_turns(sessions, B).values() for t in ts]
+                pa = behavioral_profile(a) if a else None
+                pb = behavioral_profile(b) if b else None
+                if fmt == "json":
+                    self._send_json({A: profile_to_dict(pa) if pa else None,
+                                     B: profile_to_dict(pb) if pb else None})
+                    return
+                fmtmap = {"turns": "{:.0f}", "reasoning_pct": "{:.0f}%", "think_before_action_pct": "{:.0f}%",
+                          "tool_calls_per_turn": "{:.2f}", "avg_text_chars": "{:.0f}", "avg_think_chars": "{:.0f}"}
+                labels = [("turns", "turns"), ("reasoning_pct", "reason%"), ("think_before_action_pct", "tba%"),
+                          ("tool_calls_per_turn", "tools/turn"), ("avg_text_chars", "narr"), ("avg_think_chars", "think-chars")]
+                rows = ""
+                for key, label in labels:
+                    av = fmtmap[key].format(pa[key]) if pa else "&mdash;"
+                    bv = fmtmap[key].format(pb[key]) if pb else "&mdash;"
+                    rows += f"<tr><td>{label}</td><td>{av}</td><td>{bv}</td></tr>"
+                body = (f'<table><tr><th>metric</th><th>{html_mod.escape(A)}</th><th>{html_mod.escape(B)}</th></tr>'
+                        + rows + '</table>')
+                form = ('<form method="get">A <input name="a" value="' + html_mod.escape(A) + '"> '
+                        'B <input name="b" value="' + html_mod.escape(B) + '"> <button>go</button></form>')
+                self._send_html(self._analytics_page("compare", form + body))
+
+            def _serve_activity(self, query):
+                model = query.get("model", [None])[0]
+                fmt = query.get("format", ["html"])[0]
+                by_model = query.get("by_model", ["0"])[0] in ("1", "true", "on", "yes")
+                sessions = find_all_sessions()
+                if model:
+                    sessions = [s for s in sessions if s.has_model(model)]
+                by_day = activity_by_day(sessions, model)
+                if fmt == "json":
+                    self._send_json({d: {"sessions": v["sessions"], "turns": v["turns"], "models": dict(v["models"])}
+                                     for d, v in sorted(by_day.items())})
+                    return
+                rows = ""
+                for d in sorted(by_day):
+                    v = by_day[d]
+                    models = html_mod.escape(", ".join(f"{m}:{c}" for m, c in v["models"].most_common(4))) if by_model else ""
+                    rows += f"<tr><td>{d}</td><td>{v['sessions']}</td><td>{v['turns']}</td><td>{models}</td></tr>"
+                body = (f'<table><tr><th>date</th><th>sessions</th><th>turns</th><th>models</th></tr>{rows}</table>')
+                self._send_html(self._analytics_page("activity", body))
 
             def _serve_index(self, query):
                 project_filter = query.get("project", [None])[0]
@@ -3013,6 +3141,7 @@ tr:hover { background: var(--hover); }
     <input type="text" name="model" placeholder="model (e.g. fable)" style="max-width:180px">
     <button type="submit">Search</button>
 </form>
+<div style="margin:0 0 14px 0;color:#565f89;font-size:0.9em;">analytics: <a href="/profile" style="color:#7aa2f7;">profile</a> &middot; <a href="/compare?a=fable&amp;b=opus" style="color:#7aa2f7;">compare</a> &middot; <a href="/activity?by_model=1" style="color:#7aa2f7;">activity</a></div>
 <table>
 <tr><th>Session</th><th>Date</th><th>Size</th><th>Project</th><th>Summary</th></tr>
 {{ROWS}}
