@@ -662,7 +662,11 @@ def _h_subagent_headline(session):
     msg = next((m.text for m in session.messages if m.role == "user" and len(m.text) > 5), "")
     if not msg:
         return None
-    one = re.sub(r"\s+", " ", msg).strip()
+    # Strip tag-blocks/lone-tags first (not just whitespace) so a leading
+    # <system-reminder>/command block can't get front-loaded as the headline.
+    one = _h_strip_noise(msg)
+    if not one:
+        return None
     pm = _H_PATH.search(one)
     if not pm:
         return None  # no path to front-load; let the normal cascade handle it
@@ -3249,6 +3253,9 @@ class Repl:
 
     @staticmethod
     def _run_shell(shell_cmd):
+        # TRUSTED INPUT ONLY: the `!command` REPL escape runs operator-typed shell
+        # locally (shell=True) by design — it's a personal CLI. If this tool ever
+        # serves untrusted input, gate or remove this escape (no shell=True on it).
         if shell_cmd:
             import subprocess
             try:
