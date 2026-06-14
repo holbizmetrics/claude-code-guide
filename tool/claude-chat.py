@@ -72,15 +72,19 @@ SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 
 class Message:
     """A single message in a conversation."""
-    __slots__ = ("role", "text", "tool_calls", "thinking", "timestamp", "model")
+    __slots__ = ("role", "text", "tool_calls", "thinking", "timestamp", "model", "has_thinking")
 
-    def __init__(self, role, text="", tool_calls=None, thinking="", timestamp=None, model=None):
+    def __init__(self, role, text="", tool_calls=None, thinking="", timestamp=None, model=None, has_thinking=False):
         self.role = role
         self.text = text
         self.tool_calls = tool_calls or []
         self.thinking = thinking
         self.timestamp = timestamp
         self.model = model
+        # True when a thinking/redacted_thinking block was present, even if its
+        # content is empty (encrypted transcripts carry the block but no text) —
+        # so "reasoning present" is measurable without confusing it with "no thinking".
+        self.has_thinking = has_thinking
 
     def __repr__(self):
         return f"<Message {self.role}: {self.text[:60]}...>"
@@ -192,20 +196,26 @@ class Session:
 
                     msg_data = obj.get("message", obj)
                     role = msg_data.get("role", obj.get("type", ""))
+                    ts = obj.get("timestamp")
 
                     if role == "user":
                         text = self._extract_text(msg_data.get("content", ""))
                         if text and "<system-reminder>" not in text:
-                            self.messages.append(Message("user", text))
+                            self.messages.append(Message("user", text, timestamp=ts))
 
                     elif role == "assistant":
                         content = msg_data.get("content", [])
+                        # Per-turn model: a single session can span >1 model (e.g. a
+                        # mid-session model swap), so each assistant turn carries its
+                        # OWN model. self.model stays = the first one (session headline).
+                        msg_model = msg_data.get("model", None)
                         if not self.model:
-                            self.model = msg_data.get("model", None)
+                            self.model = msg_model
 
                         text_parts = []
                         tool_calls = []
                         thinking = ""
+                        has_thinking = False
 
                         if isinstance(content, str):
                             text_parts.append(content)
@@ -222,12 +232,15 @@ class Session:
                                         block.get("input", {})
                                     )
                                     tool_calls.append(tc)
-                                elif btype == "thinking":
+                                elif btype in ("thinking", "redacted_thinking"):
+                                    has_thinking = True
                                     thinking = block.get("thinking", "")
 
                         text = "\n".join(text_parts).strip()
                         if text or tool_calls:
-                            m = Message("assistant", text, tool_calls, thinking, model=self.model)
+                            m = Message("assistant", text, tool_calls, thinking,
+                                        timestamp=ts, model=msg_model or self.model,
+                                        has_thinking=has_thinking)
                             self.messages.append(m)
 
         except (IOError, OSError):
@@ -327,6 +340,30 @@ class Session:
         except (IOError, OSError):
             pass
         return count
+
+    def turn_models(self):
+        """Counter of per-turn models across assistant messages.
+
+        A session can be multi-model (e.g. a mid-session model swap), so this
+        counts every assistant turn's own model — unlike `self.model`, which is
+        just the first (headline) model seen.
+        """
+        from collections import Counter
+        self.parse()
+        c = Counter()
+        for m in self.messages:
+            if m.role == "assistant" and m.model:
+                c[m.model] += 1
+        return c
+
+    def is_mixed(self):
+        """True if the session has assistant turns from more than one model."""
+        return len(self.turn_models()) > 1
+
+    def has_model(self, needle):
+        """True if any per-turn model name contains `needle` (case-insensitive substring)."""
+        nl = needle.lower()
+        return any(nl in mdl.lower() for mdl in self.turn_models())
 
 
 # ─── Smart Headlines (heuristic, no AI) ──────────────────────────────────────
@@ -1438,6 +1475,81 @@ def _build_sequence_diagram(session):
     return HTMLExporter._build_sequence_diagram(session)
 
 
+# ─── Behavioral profiling ─────────────────────────────────────────────────────
+#
+# A per-model "how it works" fingerprint over assistant turns: reasoning
+# presence, first-tool distribution, tool intensity, narration length. Powers
+# `profile` and `compare`.
+#
+# DELIBERATE GAP (two related metrics, same root cause, both deferred):
+#   - "think-before-first-action": needs cross-event ordering of thinking vs tool.
+#   - "reasoning present %": thinking lands in its OWN event (no text/tool), which
+#     Session.parse() drops, so has_thinking is rarely set → it reads ~0% on real
+#     transcripts. reasoning_pct is still computed below (harmless), but callers
+#     must NOT display it until the sequencing pass preserves thinking-only events.
+# Both need the same fix: preserve and order per-turn events. Shipping a wrong
+# number (0%) is worse than naming the gap.
+
+def behavioral_profile(messages):
+    """Compute behavioral metrics over assistant Messages (already model-filtered)."""
+    from collections import Counter
+    turns = reasoning = tool_turns = tool_calls = text_chars = think_chars = 0
+    first_tools = Counter()
+    for m in messages:
+        if m.role != "assistant" or not (m.text or m.tool_calls):
+            continue
+        turns += 1
+        if m.has_thinking:
+            reasoning += 1
+        if m.tool_calls:
+            tool_turns += 1
+            tool_calls += len(m.tool_calls)
+            first_tools[m.tool_calls[0].name] += 1
+        text_chars += len(m.text or "")
+        think_chars += len(m.thinking or "")
+    return {
+        "turns": turns,
+        "reasoning_pct": (100.0 * reasoning / turns) if turns else 0.0,
+        "tool_turns": tool_turns,
+        "tool_calls_per_turn": (tool_calls / turns) if turns else 0.0,
+        "avg_text_chars": (text_chars / turns) if turns else 0.0,
+        "avg_think_chars": (think_chars / turns) if turns else 0.0,
+        "first_tools": first_tools,
+    }
+
+
+def collect_assistant_messages(sessions, model_filter=None):
+    """Return dict model -> list[Message] of assistant turns across sessions.
+
+    model_filter (case-insensitive substring) restricts which models are kept.
+    """
+    from collections import defaultdict
+    nl = model_filter.lower() if model_filter else None
+    groups = defaultdict(list)
+    for s in sessions:
+        s.parse()
+        for m in s.messages:
+            if m.role != "assistant" or not m.model:
+                continue
+            if nl and nl not in m.model.lower():
+                continue
+            groups[m.model].append(m)
+    return groups
+
+
+def format_profile(label, p):
+    """Render one behavioral_profile() dict as an indented block."""
+    tools = ", ".join(f"{n}:{c}" for n, c in p["first_tools"].most_common(5)) or "(none)"
+    return "\n".join([
+        f"  {label}",
+        f"    turns:                {p['turns']}",
+        f"    tool calls/turn:      {p['tool_calls_per_turn']:.2f}",
+        f"    avg narration chars:  {p['avg_text_chars']:.0f}",
+        f"    avg thinking chars:   {p['avg_think_chars']:.0f}  (0 = encrypted/absent in transcript)",
+        f"    top first-tools:      {tools}",
+    ])
+
+
 # ─── Commands ────────────────────────────────────────────────────────────────
 
 class Command:
@@ -1473,6 +1585,15 @@ class ListCommand(Command):
         if not sessions:
             print("No sessions found.")
             return
+
+        # --model: keep only sessions with assistant turns from a matching model.
+        # Opt-in, so the default fast path (no full parse) is unchanged.
+        model_filter = getattr(args, "model", None)
+        if model_filter:
+            sessions = [s for s in sessions if s.has_model(model_filter)]
+            if not sessions:
+                print(f'No sessions with a model matching "{model_filter}".')
+                return
 
         limit = args.limit or 20
         detail = getattr(args, "detail", False)
@@ -1559,6 +1680,12 @@ class SearchCommand(Command):
             sessions = [s for s in sessions if s.modified >= after_dt]
         if before_dt:
             sessions = [s for s in sessions if s.modified <= before_dt]
+
+        # --model: restrict to sessions containing turns from a matching model
+        # (session-level scope; the snippet itself isn't model-tagged yet).
+        model_filter = getattr(args, "model", None)
+        if model_filter:
+            sessions = [s for s in sessions if s.has_model(model_filter)]
 
         results = []
         for s in sessions:
@@ -1776,6 +1903,13 @@ class StatsCommand(Command):
             print("No sessions found.")
             return
 
+        model_filter = getattr(args, "model", None)
+        if model_filter:
+            sessions = [s for s in sessions if s.has_model(model_filter)]
+            if not sessions:
+                print(f'No sessions with a model matching "{model_filter}".')
+                return
+
         total_size = sum(s.size for s in sessions)
         projects = set(s.project for s in sessions)
 
@@ -1784,7 +1918,8 @@ class StatsCommand(Command):
         total_asst_msgs = 0
         total_tool_calls = 0
         total_code_blocks = 0
-        models_used = {}
+        models_turns = {}     # per-TURN model counts (a session can be multi-model)
+        mixed_sessions = 0
         oldest = min(s.modified for s in sessions)
         newest = max(s.modified for s in sessions)
 
@@ -1797,9 +1932,11 @@ class StatsCommand(Command):
                 elif m.role == "assistant":
                     total_asst_msgs += 1
                     total_tool_calls += len(m.tool_calls)
+                    if m.model:
+                        models_turns[m.model] = models_turns.get(m.model, 0) + 1
             total_code_blocks += len(s.code_blocks())
-            if s.model:
-                models_used[s.model] = models_used.get(s.model, 0) + 1
+            if s.is_mixed():
+                mixed_sessions += 1
 
         days_span = max(1, (newest - oldest).days)
 
@@ -1819,10 +1956,11 @@ class StatsCommand(Command):
         print(f"  Msgs/day:        {(total_user_msgs + total_asst_msgs) / days_span:.1f}")
         print(f"  Sessions/day:    {len(sessions) / days_span:.1f}")
 
-        if models_used:
-            print(f"\n  Models:")
-            for model, count in sorted(models_used.items(), key=lambda x: -x[1]):
-                print(f"    {model}: {count} session(s)")
+        if models_turns:
+            print(f"\n  Models (by turn):")
+            for model, count in sorted(models_turns.items(), key=lambda x: -x[1]):
+                print(f"    {model}: {count} turn(s)")
+            print(f"    (mixed-model sessions: {mixed_sessions})")
 
         # Top sessions by size
         print(f"\n  Largest sessions:")
@@ -1855,14 +1993,33 @@ class ExtractCommand(Command):
         no_truncate = getattr(args, "no_truncate", False)
         limit = getattr(args, "limit", None)
 
-        if args.code:
+        if getattr(args, "turns", False):
+            self._extract_turns(session)
+        elif args.code:
             self._extract_code(session)
         elif args.ideas:
             self._extract_ideas(session, no_truncate=no_truncate, limit=limit)
         elif args.decisions:
             self._extract_decisions(session, no_truncate=no_truncate, limit=limit)
         else:
-            print("Specify what to extract: --code, --ideas, or --decisions")
+            print("Specify what to extract: --turns, --code, --ideas, or --decisions")
+
+    @staticmethod
+    def _extract_turns(session):
+        """Emit one compact JSON object per turn (ts, role, model, tools, text).
+
+        Pipe-friendly and low-bloat — the per-turn substrate for downstream
+        analysis/priming, without ramming raw JSONL (with all its metadata) into
+        context. Mirrors the strip-to-essentials move.
+        """
+        for m in session.messages:
+            rec = {"ts": m.timestamp, "role": m.role}
+            if m.role == "assistant":
+                rec["model"] = m.model
+                if m.tool_calls:
+                    rec["tools"] = [tc.name for tc in m.tool_calls]
+            rec["text"] = m.text
+            print(json.dumps(rec, ensure_ascii=False))
 
     @staticmethod
     def _extract_code(session):
@@ -1925,6 +2082,94 @@ class ExtractCommand(Command):
                     break
         if not found:
             print("  No explicit decisions found.")
+
+
+class ProfileCommand(Command):
+    """Behavioral fingerprint of each model across sessions (how it works, not what)."""
+
+    name = "profile"
+    aliases = ()
+
+    def execute(self):
+        args = self.args
+        in_session_id = getattr(args, "in_session", None)
+        if in_session_id:
+            s = find_session(in_session_id)
+            if not s:
+                print(f"Session not found: {in_session_id}")
+                return
+            sessions = [s]
+        else:
+            sessions = find_all_sessions(args.project)
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        groups = collect_assistant_messages(sessions, getattr(args, "model", None))
+        if not groups:
+            print("No assistant turns matched.")
+            return
+
+        scope = f"session {sessions[0].short_id}" if in_session_id else f"{len(sessions)} session(s)"
+        print(f"Behavioral profile over {scope}:\n")
+        for model in sorted(groups, key=lambda k: -len(groups[k])):
+            print(format_profile(model, behavioral_profile(groups[model])))
+            print()
+        print("  note: 'reasoning %' and 'think-before-action' omitted — both need the event-sequencing pass (deferred).")
+
+
+class CompareCommand(Command):
+    """Compare the behavioral profiles of two models, side by side (delta table)."""
+
+    name = "compare"
+    aliases = ("diff",)
+
+    def execute(self):
+        args = self.args
+        in_session_id = getattr(args, "in_session", None)
+        if in_session_id:
+            s = find_session(in_session_id)
+            if not s:
+                print(f"Session not found: {in_session_id}")
+                return
+            sessions = [s]
+        else:
+            sessions = find_all_sessions(args.project)
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        a_flat = [m for ms in collect_assistant_messages(sessions, args.model_a).values() for m in ms]
+        b_flat = [m for ms in collect_assistant_messages(sessions, args.model_b).values() for m in ms]
+        if not a_flat:
+            print(f'No turns matched model "{args.model_a}".')
+            return
+        if not b_flat:
+            print(f'No turns matched model "{args.model_b}".')
+            return
+
+        pa, pb = behavioral_profile(a_flat), behavioral_profile(b_flat)
+        scope = f"session {sessions[0].short_id}" if in_session_id else f"{len(sessions)} session(s)"
+        print(f'Compare "{args.model_a}" vs "{args.model_b}" over {scope}:\n')
+
+        rows = [
+            ("turns", str(pa["turns"]), str(pb["turns"])),
+            ("tool calls/turn", f"{pa['tool_calls_per_turn']:.2f}", f"{pb['tool_calls_per_turn']:.2f}"),
+            ("avg narration chars", f"{pa['avg_text_chars']:.0f}", f"{pb['avg_text_chars']:.0f}"),
+            ("avg thinking chars", f"{pa['avg_think_chars']:.0f}", f"{pb['avg_think_chars']:.0f}"),
+        ]
+        wlabel = max(len(r[0]) for r in rows)
+        ca, cb = args.model_a[:18], args.model_b[:18]
+        print(f"  {'metric'.ljust(wlabel)}   {ca.rjust(18)}   {cb.rjust(18)}")
+        for name, a, b in rows:
+            print(f"  {name.ljust(wlabel)}   {a.rjust(18)}   {b.rjust(18)}")
+
+        print(f"\n  first-tool mix (A | B, % of that model's tool-turns):")
+        for t in sorted(set(pa["first_tools"]) | set(pb["first_tools"])):
+            ta = 100.0 * pa["first_tools"].get(t, 0) / pa["tool_turns"] if pa["tool_turns"] else 0
+            tb = 100.0 * pb["first_tools"].get(t, 0) / pb["tool_turns"] if pb["tool_turns"] else 0
+            print(f"    {t.ljust(12)} {ta:5.0f}% | {tb:5.0f}%")
+        print("\n  note: 'reasoning %' and 'think-before-action' omitted — both need the event-sequencing pass (deferred).")
 
 
 class ServeCommand(Command):
@@ -2244,7 +2489,8 @@ def _build_command_registry():
     """Map every command name + alias to its Command class."""
     classes = [
         ListCommand, SearchCommand, ExportCommand, BackupCommand,
-        StatsCommand, ExtractCommand, ServeCommand, WikiCommand, ProtectCommand,
+        StatsCommand, ExtractCommand, ProfileCommand, CompareCommand,
+        ServeCommand, WikiCommand, ProtectCommand,
     ]
     registry = {}
     for cls in classes:
@@ -2616,7 +2862,8 @@ _INTERACTIVE_HELP = (
 
 _VALID_COMMANDS = {
     "list", "ls", "search", "grep", "find", "export", "backup",
-    "stats", "extract", "serve", "web", "browse", "wiki", "archive", "protect",
+    "stats", "extract", "profile", "compare", "diff",
+    "serve", "web", "browse", "wiki", "archive", "protect",
 }
 
 
@@ -2791,6 +3038,7 @@ Examples:
     p.add_argument("--limit", "-n", type=int, help="Max sessions to show")
     p.add_argument("--detail", "-d", action="store_true", help="Show preview of each session's topics")
     p.add_argument("--smart", "-s", action="store_true", help="Smarter headlines: first real ask / commit subject / edited files instead of the first message")
+    p.add_argument("--model", "-m", help="Only sessions with turns from this model (substring, e.g. fable)")
 
     # search
     p = sub.add_parser("search", aliases=["grep", "find"], help="Search across all conversations")
@@ -2809,6 +3057,7 @@ Examples:
                    help="Only sessions modified on or after this date")
     p.add_argument("--before", metavar="YYYY-MM-DD",
                    help="Only sessions modified on or before this date (inclusive of the whole day)")
+    p.add_argument("--model", "-m", help="Only sessions with turns from this model (substring, e.g. fable)")
 
     # export
     p = sub.add_parser("export", help="Export session to file")
@@ -2832,15 +3081,30 @@ Examples:
     # stats
     p = sub.add_parser("stats", help="Show usage statistics")
     p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--model", "-m", help="Only sessions with turns from this model (substring, e.g. fable)")
 
     # extract
     p = sub.add_parser("extract", help="Extract content from session")
     p.add_argument("session_id", help="Session ID (full or first 8 chars)")
+    p.add_argument("--turns", action="store_true", help="Compact per-turn JSONL dump (ts, role, model, tools, text) for analysis/piping")
     p.add_argument("--code", action="store_true", help="Extract code blocks")
     p.add_argument("--ideas", action="store_true", help="Extract your messages")
     p.add_argument("--decisions", action="store_true", help="Extract decision points")
     p.add_argument("--no-truncate", action="store_true", help="Show full content without character cap (applies to --ideas and --decisions)")
     p.add_argument("--limit", type=int, help="Per-item character cap (default: 300 for --ideas, ~130 for --decisions snippet window)")
+
+    # profile — per-model behavioral fingerprint
+    p = sub.add_parser("profile", help="Per-model behavioral fingerprint (reasoning %, first-tools, tool intensity)")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
+    p.add_argument("--model", "-m", help="Restrict to models matching this substring")
+
+    # compare — two-model delta table
+    p = sub.add_parser("compare", aliases=["diff"], help="Compare two models' behavioral profiles (delta table)")
+    p.add_argument("model_a", help="First model (substring, e.g. fable)")
+    p.add_argument("model_b", help="Second model (substring, e.g. opus)")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
 
     # serve
     p = sub.add_parser("serve", aliases=["web", "browse"], help="Browse in your browser")

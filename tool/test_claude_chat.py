@@ -1129,3 +1129,72 @@ def test_summary_skips_continuation_summary(tmp_path):
     out = cc.Session(jsonl).summary()
     assert "continued from a previous" not in out.lower()
     assert out.startswith("Fix the parser bug")
+
+
+# ─── Model-aware features (per-turn model, profile, compare, extract --turns) ──
+
+def _mixed_model_session(tmp_path):
+    """A session that swaps model mid-stream (Fable then Opus) — the key case
+    the old per-session `self.model` collapsed."""
+    return cc.Session(_write_jsonl(tmp_path, "mix0-0000-0000-0000-000000000000.jsonl", [
+        _user_line("start"),
+        _assistant_tool_line("Read", {"file_path": "/a.py"}, text="grounding first", model="claude-fable-5"),
+        _assistant_line("a thought", model="claude-fable-5"),
+        _user_line("continue"),
+        _assistant_tool_line("Edit", {"file_path": "/a.py", "old_string": "x", "new_string": "y"},
+                             text="editing now", model="claude-opus-4-8"),
+    ]))
+
+
+def test_per_turn_model_tracked(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    tm = s.turn_models()
+    assert tm["claude-fable-5"] == 2
+    assert tm["claude-opus-4-8"] == 1
+
+
+def test_is_mixed_detection(tmp_path):
+    assert _mixed_model_session(tmp_path).is_mixed() is True
+
+
+def test_single_model_not_mixed(tmp_path):
+    s = cc.Session(_write_jsonl(tmp_path, "one0-0000-0000-0000-000000000000.jsonl", [
+        _user_line("hi"), _assistant_line("hello", model="claude-opus-4-8"),
+    ]))
+    assert s.is_mixed() is False
+
+
+def test_has_model_substring(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    assert s.has_model("fable") is True
+    assert s.has_model("opus") is True
+    assert s.has_model("sonnet") is False
+
+
+def test_behavioral_profile_counts(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    s.parse()
+    fable = [m for m in s.messages if m.role == "assistant" and m.model == "claude-fable-5"]
+    p = cc.behavioral_profile(fable)
+    assert p["turns"] == 2
+    assert p["tool_turns"] == 1
+    assert p["first_tools"]["Read"] == 1  # Fable's first tool was Read (grounding)
+
+
+def test_collect_assistant_messages_model_filter(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    groups = cc.collect_assistant_messages([s], "opus")
+    assert set(groups) == {"claude-opus-4-8"}
+    assert len(groups["claude-opus-4-8"]) == 1
+
+
+def test_extract_turns_emits_jsonl(tmp_path, capsys):
+    s = _mixed_model_session(tmp_path)
+    s.parse()
+    cc.ExtractCommand._extract_turns(s)
+    lines = [l for l in capsys.readouterr().out.splitlines() if l.strip()]
+    recs = [json.loads(l) for l in lines]
+    assert recs[0]["role"] == "user"
+    asst = [r for r in recs if r["role"] == "assistant"]
+    assert asst[0]["model"] == "claude-fable-5"
+    assert asst[0]["tools"] == ["Read"]
