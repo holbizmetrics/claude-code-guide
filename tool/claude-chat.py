@@ -2327,7 +2327,10 @@ class ServeCommand(Command):
 
             def _serve_index(self, query):
                 project_filter = query.get("project", [None])[0]
+                model_filter = query.get("model", [None])[0]
                 sessions = find_all_sessions(project_filter)
+                if model_filter:
+                    sessions = [s for s in sessions if s.has_model(model_filter)]
 
                 rows = []
                 for s in sessions:
@@ -2359,11 +2362,14 @@ class ServeCommand(Command):
 
             def _serve_search(self, query):
                 q = query.get("q", [""])[0]
+                model_filter = query.get("model", [None])[0]
                 if not q:
                     self._send_html("<html><body>No query</body></html>")
                     return
 
                 sessions = find_all_sessions()
+                if model_filter:
+                    sessions = [s for s in sessions if s.has_model(model_filter)]
                 results = []
                 for s in sessions:
                     try:
@@ -2391,6 +2397,8 @@ class ServeCommand(Command):
                 page = WEB_TEMPLATE_SEARCH.replace("{{ROWS}}", "\n".join(rows))
                 page = page.replace("{{QUERY}}", html_mod.escape(q))
                 page = page.replace("{{COUNT}}", str(len(results)))
+                page = page.replace("{{MODEL_NOTE}}",
+                                    f" · model: {html_mod.escape(model_filter)}" if model_filter else "")
                 self._send_html(page)
 
         try:
@@ -2802,6 +2810,7 @@ tr:hover { background: var(--hover); }
     this.querySelector('input').style.opacity='0.6';
 ">
     <input type="text" name="q" placeholder="Search across all conversations..." autofocus>
+    <input type="text" name="model" placeholder="model (e.g. fable)" style="max-width:180px">
     <button type="submit">Search</button>
 </form>
 <table>
@@ -2940,7 +2949,7 @@ tr:hover { background: var(--hover); }
 <body>
 <a class="back" href="/">&#8592; Back</a>
 <h1>Search: "{{QUERY}}"</h1>
-<div class="stats">{{COUNT}} session(s) found</div>
+<div class="stats">{{COUNT}} session(s) found{{MODEL_NOTE}}</div>
 <table>
 <tr><th>Session</th><th>Matches</th><th>Date</th><th>Summary</th></tr>
 {{ROWS}}
