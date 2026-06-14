@@ -1171,14 +1171,41 @@ def test_has_model_substring(tmp_path):
     assert s.has_model("sonnet") is False
 
 
-def test_behavioral_profile_counts(tmp_path):
+def test_turn_segmentation(tmp_path):
+    # Two fable assistant EVENTS under one user prompt collapse into ONE turn.
     s = _mixed_model_session(tmp_path)
     s.parse()
-    fable = [m for m in s.messages if m.role == "assistant" and m.model == "claude-fable-5"]
-    p = cc.behavioral_profile(fable)
-    assert p["turns"] == 2
+    by_model = {}
+    for t in s.turns:
+        by_model.setdefault(t.model, []).append(t)
+    assert len(by_model["claude-fable-5"]) == 1   # 2 events → 1 turn
+    assert len(by_model["claude-opus-4-8"]) == 1
+
+
+def test_behavioral_profile_turn_based(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    fable_turns = cc.collect_turns([s], "fable")["claude-fable-5"]
+    p = cc.behavioral_profile(fable_turns)
+    assert p["turns"] == 1          # one response, not two events
     assert p["tool_turns"] == 1
-    assert p["first_tools"]["Read"] == 1  # Fable's first tool was Read (grounding)
+    assert p["first_tools"]["Read"] == 1   # Fable opened with Read (grounding)
+    assert p["reasoning_pct"] == 0.0       # no thinking block in this turn
+    assert p["think_before_action_pct"] == 0.0
+
+
+def test_reasoning_and_think_before_action(tmp_path):
+    # One turn: a thinking-ONLY event (which the old parser dropped) THEN a tool event.
+    s = cc.Session(_write_jsonl(tmp_path, "thk0-0000-0000-0000-000000000000.jsonl", [
+        _user_line("go"),
+        {"type": "assistant", "message": {"role": "assistant", "model": "claude-fable-5",
+            "content": [{"type": "thinking", "thinking": "let me reason first"}]}},
+        _assistant_tool_line("Bash", {"command": "ls"}, model="claude-fable-5"),
+    ]))
+    turns = cc.collect_turns([s], "fable")["claude-fable-5"]
+    p = cc.behavioral_profile(turns)
+    assert p["turns"] == 1
+    assert p["reasoning_pct"] == 100.0          # thinking-only event preserved
+    assert p["think_before_action_pct"] == 100.0  # thinking came before the Bash action
 
 
 def test_collect_assistant_messages_model_filter(tmp_path):

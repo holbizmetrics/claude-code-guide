@@ -142,6 +142,92 @@ class ToolCall:
         return self.name
 
 
+class Turn:
+    """One user prompt + the assistant's full (possibly multi-event) response.
+
+    Claude Code emits a single assistant response as SEVERAL transcript events
+    (a thinking event, then a text event, then a tool_use event, ...). A Turn
+    aggregates those events back into one unit so behavioral metrics are measured
+    per response ("how it opens a task"), not per raw event.
+    """
+
+    __slots__ = ("model", "n_tools", "first_tool", "narration_chars",
+                 "thinking_chars", "has_reasoning", "think_before_action")
+
+    def __init__(self, model, n_tools, first_tool, narration_chars,
+                 thinking_chars, has_reasoning, think_before_action):
+        self.model = model
+        self.n_tools = n_tools
+        self.first_tool = first_tool                # name of the first tool used in the turn, or None
+        self.narration_chars = narration_chars
+        self.thinking_chars = thinking_chars
+        self.has_reasoning = has_reasoning          # any thinking event present in the turn
+        self.think_before_action = think_before_action  # True/False for tool-turns, None if no tool
+
+
+def _finalize_turn(aevents):
+    """Aggregate a turn's ordered assistant events into a Turn.
+
+    aevents: list of ("A", model, has_thinking, think_idx, tool_idx, tool_names, text_len, think_len).
+    think_before_action is resolved at the FIRST tool event: True if any earlier
+    event reasoned, or the action event itself reasoned before its first tool.
+    """
+    if not aevents:
+        return None
+    model = aevents[0][1]
+    n_tools = narration = thinking_chars = 0
+    first_tool = None
+    has_reasoning = False
+    think_before_action = None
+    thinking_seen_before_first_tool = False
+    for (_, _mdl, has_think, think_idx, tool_idx, tool_names, text_len, think_len) in aevents:
+        narration += text_len
+        thinking_chars += think_len
+        if has_think:
+            has_reasoning = True
+        if tool_names and first_tool is None:
+            first_tool = tool_names[0]
+            if thinking_seen_before_first_tool:
+                think_before_action = True
+            elif has_think and think_idx is not None and tool_idx is not None and think_idx < tool_idx:
+                think_before_action = True
+            else:
+                think_before_action = False
+        if tool_names:
+            n_tools += len(tool_names)
+        if has_think and first_tool is None:
+            thinking_seen_before_first_tool = True
+    return Turn(model, n_tools, first_tool, narration, thinking_chars,
+                has_reasoning, think_before_action)
+
+
+def _build_turns(events):
+    """Segment an ordered event log into Turn objects.
+
+    events: ("U",) boundaries (text-bearing user messages) and
+            ("A", ...) assistant events. Assistant events accumulate into the
+            current turn; each ("U",) closes the previous turn and opens a new one.
+    """
+    turns = []
+    current = None
+    for ev in events:
+        if ev[0] == "U":
+            if current is not None:
+                t = _finalize_turn(current)
+                if t:
+                    turns.append(t)
+            current = []
+        else:  # ("A", ...)
+            if current is None:
+                current = []   # assistant events before the first user message
+            current.append(ev)
+    if current:
+        t = _finalize_turn(current)
+        if t:
+            turns.append(t)
+    return turns
+
+
 class Session:
     """A parsed Claude Code session.
 
@@ -183,6 +269,8 @@ class Session:
             return
         self._parsed = True
 
+        self.turns = []
+        events = []  # ordered raw event log for turn segmentation (see _build_turns)
         try:
             with open(self.path, "r", encoding="utf-8", errors="replace") as f:
                 for line in f:
@@ -202,6 +290,9 @@ class Session:
                         text = self._extract_text(msg_data.get("content", ""))
                         if text and "<system-reminder>" not in text:
                             self.messages.append(Message("user", text, timestamp=ts))
+                            # A text-bearing user message starts a new turn. tool_result-only
+                            # user messages (text == "") are mid-turn and do NOT segment.
+                            events.append(("U",))
 
                     elif role == "assistant":
                         content = msg_data.get("content", [])
@@ -216,33 +307,50 @@ class Session:
                         tool_calls = []
                         thinking = ""
                         has_thinking = False
+                        think_idx = None   # content-index of first thinking block (within-event order)
+                        tool_idx = None    # content-index of first tool_use block
+                        thinking_len = 0
 
                         if isinstance(content, str):
                             text_parts.append(content)
                         elif isinstance(content, list):
-                            for block in content:
+                            for i, block in enumerate(content):
                                 if not isinstance(block, dict):
                                     continue
                                 btype = block.get("type", "")
                                 if btype == "text":
                                     text_parts.append(block.get("text", ""))
                                 elif btype == "tool_use":
-                                    tc = ToolCall(
+                                    tool_calls.append(ToolCall(
                                         block.get("name", "unknown"),
                                         block.get("input", {})
-                                    )
-                                    tool_calls.append(tc)
+                                    ))
+                                    if tool_idx is None:
+                                        tool_idx = i
                                 elif btype in ("thinking", "redacted_thinking"):
                                     has_thinking = True
-                                    thinking = block.get("thinking", "")
+                                    if think_idx is None:
+                                        think_idx = i
+                                    tcontent = block.get("thinking", "")
+                                    if tcontent:
+                                        thinking = tcontent
+                                        thinking_len += len(tcontent)
 
                         text = "\n".join(text_parts).strip()
+                        # Record EVERY assistant event (incl. thinking-ONLY events, which are
+                        # NOT added to self.messages but ARE load-bearing for the turn-level
+                        # reasoning% and think-before-action metrics — the point of this pass).
+                        events.append(("A", msg_model or self.model, has_thinking,
+                                       think_idx, tool_idx,
+                                       [tc.name for tc in tool_calls],
+                                       len(text), thinking_len))
                         if text or tool_calls:
                             m = Message("assistant", text, tool_calls, thinking,
                                         timestamp=ts, model=msg_model or self.model,
                                         has_thinking=has_thinking)
                             self.messages.append(m)
 
+            self.turns = _build_turns(events)
         except (IOError, OSError):
             pass
 
@@ -1477,51 +1585,58 @@ def _build_sequence_diagram(session):
 
 # ─── Behavioral profiling ─────────────────────────────────────────────────────
 #
-# A per-model "how it works" fingerprint over assistant turns: reasoning
-# presence, first-tool distribution, tool intensity, narration length. Powers
-# `profile` and `compare`.
-#
-# DELIBERATE GAP (two related metrics, same root cause, both deferred):
-#   - "think-before-first-action": needs cross-event ordering of thinking vs tool.
-#   - "reasoning present %": thinking lands in its OWN event (no text/tool), which
-#     Session.parse() drops, so has_thinking is rarely set → it reads ~0% on real
-#     transcripts. reasoning_pct is still computed below (harmless), but callers
-#     must NOT display it until the sequencing pass preserves thinking-only events.
-# Both need the same fix: preserve and order per-turn events. Shipping a wrong
-# number (0%) is worse than naming the gap.
+# A per-model "how it works" fingerprint over Turns (one user prompt + the
+# assistant's full multi-event response): reasoning presence, think-before-action,
+# first-tool distribution, tool intensity, narration length. Powers `profile` and
+# `compare`. Operates on Turn objects (Session.turns), NOT raw events — so
+# "how it opens a task" and "does it think before acting" are measured per
+# response, with thinking-only events preserved by the parser.
 
-def behavioral_profile(messages):
-    """Compute behavioral metrics over assistant Messages (already model-filtered)."""
+def behavioral_profile(turns):
+    """Compute behavioral metrics over a list of Turn objects (already model-filtered)."""
     from collections import Counter
-    turns = reasoning = tool_turns = tool_calls = text_chars = think_chars = 0
-    first_tools = Counter()
-    for m in messages:
-        if m.role != "assistant" or not (m.text or m.tool_calls):
-            continue
-        turns += 1
-        if m.has_thinking:
-            reasoning += 1
-        if m.tool_calls:
-            tool_turns += 1
-            tool_calls += len(m.tool_calls)
-            first_tools[m.tool_calls[0].name] += 1
-        text_chars += len(m.text or "")
-        think_chars += len(m.thinking or "")
+    n = len(turns)
+    reasoning = sum(1 for t in turns if t.has_reasoning)
+    tool_turns = [t for t in turns if t.first_tool is not None]
+    nt = len(tool_turns)
+    tba = sum(1 for t in tool_turns if t.think_before_action)
     return {
-        "turns": turns,
-        "reasoning_pct": (100.0 * reasoning / turns) if turns else 0.0,
-        "tool_turns": tool_turns,
-        "tool_calls_per_turn": (tool_calls / turns) if turns else 0.0,
-        "avg_text_chars": (text_chars / turns) if turns else 0.0,
-        "avg_think_chars": (think_chars / turns) if turns else 0.0,
-        "first_tools": first_tools,
+        "turns": n,
+        "reasoning_pct": (100.0 * reasoning / n) if n else 0.0,
+        "tool_turns": nt,
+        "think_before_action_pct": (100.0 * tba / nt) if nt else 0.0,
+        "tool_calls_per_turn": (sum(t.n_tools for t in turns) / n) if n else 0.0,
+        "avg_text_chars": (sum(t.narration_chars for t in turns) / n) if n else 0.0,
+        "avg_think_chars": (sum(t.thinking_chars for t in turns) / n) if n else 0.0,
+        "first_tools": Counter(t.first_tool for t in tool_turns),
     }
+
+
+def collect_turns(sessions, model_filter=None):
+    """Return dict model -> list[Turn] across sessions.
+
+    A turn's model is its first assistant event's model. model_filter
+    (case-insensitive substring) restricts which models are kept.
+    """
+    from collections import defaultdict
+    nl = model_filter.lower() if model_filter else None
+    groups = defaultdict(list)
+    for s in sessions:
+        s.parse()
+        for t in s.turns:
+            if not t.model:
+                continue
+            if nl and nl not in t.model.lower():
+                continue
+            groups[t.model].append(t)
+    return groups
 
 
 def collect_assistant_messages(sessions, model_filter=None):
     """Return dict model -> list[Message] of assistant turns across sessions.
 
     model_filter (case-insensitive substring) restricts which models are kept.
+    Retained for callers that want per-message (not per-turn) granularity.
     """
     from collections import defaultdict
     nl = model_filter.lower() if model_filter else None
@@ -1542,7 +1657,9 @@ def format_profile(label, p):
     tools = ", ".join(f"{n}:{c}" for n, c in p["first_tools"].most_common(5)) or "(none)"
     return "\n".join([
         f"  {label}",
-        f"    turns:                {p['turns']}",
+        f"    turns (responses):    {p['turns']}",
+        f"    reasoning present:    {p['reasoning_pct']:.0f}%",
+        f"    think before action:  {p['think_before_action_pct']:.0f}%  (of {p['tool_turns']} tool-turns)",
         f"    tool calls/turn:      {p['tool_calls_per_turn']:.2f}",
         f"    avg narration chars:  {p['avg_text_chars']:.0f}",
         f"    avg thinking chars:   {p['avg_think_chars']:.0f}  (0 = encrypted/absent in transcript)",
@@ -2105,7 +2222,7 @@ class ProfileCommand(Command):
             print("No sessions found.")
             return
 
-        groups = collect_assistant_messages(sessions, getattr(args, "model", None))
+        groups = collect_turns(sessions, getattr(args, "model", None))
         if not groups:
             print("No assistant turns matched.")
             return
@@ -2115,7 +2232,6 @@ class ProfileCommand(Command):
         for model in sorted(groups, key=lambda k: -len(groups[k])):
             print(format_profile(model, behavioral_profile(groups[model])))
             print()
-        print("  note: 'reasoning %' and 'think-before-action' omitted — both need the event-sequencing pass (deferred).")
 
 
 class CompareCommand(Command):
@@ -2139,8 +2255,8 @@ class CompareCommand(Command):
             print("No sessions found.")
             return
 
-        a_flat = [m for ms in collect_assistant_messages(sessions, args.model_a).values() for m in ms]
-        b_flat = [m for ms in collect_assistant_messages(sessions, args.model_b).values() for m in ms]
+        a_flat = [t for ts in collect_turns(sessions, args.model_a).values() for t in ts]
+        b_flat = [t for ts in collect_turns(sessions, args.model_b).values() for t in ts]
         if not a_flat:
             print(f'No turns matched model "{args.model_a}".')
             return
@@ -2153,7 +2269,9 @@ class CompareCommand(Command):
         print(f'Compare "{args.model_a}" vs "{args.model_b}" over {scope}:\n')
 
         rows = [
-            ("turns", str(pa["turns"]), str(pb["turns"])),
+            ("turns (responses)", str(pa["turns"]), str(pb["turns"])),
+            ("reasoning present %", f"{pa['reasoning_pct']:.0f}%", f"{pb['reasoning_pct']:.0f}%"),
+            ("think before action %", f"{pa['think_before_action_pct']:.0f}%", f"{pb['think_before_action_pct']:.0f}%"),
             ("tool calls/turn", f"{pa['tool_calls_per_turn']:.2f}", f"{pb['tool_calls_per_turn']:.2f}"),
             ("avg narration chars", f"{pa['avg_text_chars']:.0f}", f"{pb['avg_text_chars']:.0f}"),
             ("avg thinking chars", f"{pa['avg_think_chars']:.0f}", f"{pb['avg_think_chars']:.0f}"),
@@ -2169,7 +2287,6 @@ class CompareCommand(Command):
             ta = 100.0 * pa["first_tools"].get(t, 0) / pa["tool_turns"] if pa["tool_turns"] else 0
             tb = 100.0 * pb["first_tools"].get(t, 0) / pb["tool_turns"] if pb["tool_turns"] else 0
             print(f"    {t.ljust(12)} {ta:5.0f}% | {tb:5.0f}%")
-        print("\n  note: 'reasoning %' and 'think-before-action' omitted — both need the event-sequencing pass (deferred).")
 
 
 class ServeCommand(Command):
