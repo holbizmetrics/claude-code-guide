@@ -140,7 +140,10 @@ For usage from the shell: `python3 claude-chat.py help` (also works as `-h`, or
 python3 claude-chat.py list
 python3 claude-chat.py list --project crystal    # Filter by project
 python3 claude-chat.py list --limit 100          # Show more
+python3 claude-chat.py list --model fable        # Only sessions with that model's turns (substring)
 ```
+
+The `--model` / `-m` filter (substring match on the model id, e.g. `fable` → `claude-fable-5`) is also on `search`, `stats`, `profile`, and `activity`; `compare fable opus` diffs two models head-to-head.
 
 Output:
 ```

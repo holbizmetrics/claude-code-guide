@@ -1343,3 +1343,12 @@ class TestHelpSurface:
             cc.main()
         assert exc.value.code == 0
         assert "export" in capsys.readouterr().out
+
+    # ── 1.0.2: top-level Examples block must cover analytics + model filter ──
+    def test_top_level_examples_cover_analytics_and_model_filter(self):
+        # The positional-args list always names the subcommands; this guards the
+        # curated Examples (epilog) specifically — they went stale in 1.0.1,
+        # omitting profile/compare/activity/wiki and any --model example.
+        epilog = cc._build_parser().epilog or ""
+        for token in ("--model", "profile", "compare", "activity", "wiki"):
+            assert token in epilog, f"top-level Examples missing: {token}"

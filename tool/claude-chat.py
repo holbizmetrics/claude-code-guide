@@ -46,7 +46,7 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import shlex
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 def _fix_windows_encoding():
     """Fix Windows console encoding (cp1252 can't handle Unicode)."""
@@ -3474,6 +3474,7 @@ Examples:
   %(prog)s list                          List recent sessions
   %(prog)s list --limit 100              Show more sessions
   %(prog)s list --smart                  Smarter headlines when first lines are useless
+  %(prog)s list --model fable            Only sessions with that model's turns (substring)
   %(prog)s search "react hooks"          Search across all chats
   %(prog)s search "auth" --in a7e44ed0   Search within ONE session (all matches)
   %(prog)s search "auth" -C 80           Wider context around each match (default 40)
@@ -3486,7 +3487,11 @@ Examples:
   %(prog)s stats                         Show statistics
   %(prog)s extract a7e44ed0 --code       Extract code blocks
   %(prog)s extract a7e44ed0 --ideas      Extract your messages
+  %(prog)s profile --model fable         Per-model behavioral fingerprint
+  %(prog)s compare fable opus            Two-model delta table
+  %(prog)s activity --by-model           Sessions + turns per day, per model
   %(prog)s serve                         Browse in your browser
+  %(prog)s wiki --open                   Build + open a static HTML archive
   %(prog)s protect                       Prevent auto-deletion
         """,
     )

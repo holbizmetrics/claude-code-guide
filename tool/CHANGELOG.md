@@ -7,6 +7,18 @@ to follow [Semantic Versioning](https://semver.org/).
 Convention going forward: every bug fix lands with a regression test and a
 `### Fixed` entry here; new commands/flags land under `### Added`.
 
+## 1.0.2 — 2026-06-14
+
+### Fixed
+- Top-level help (`-h` / `--help` / `help`) Examples block was stale: it omitted
+  `profile`, `compare`, `activity`, and `wiki`, and had no `--model` example
+  despite model filtering being a flagship feature. Added examples for all,
+  including `list --model fable`. Same class of omission as the 1.0.1
+  interactive-help fix — both help surfaces are now complete.
+
+### Docs
+- README `list` section: added a `--model` filter example.
+
 ## 1.0.1 — 2026-06-14
 
 ### Fixed
