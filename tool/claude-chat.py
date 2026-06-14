@@ -1709,6 +1709,46 @@ def per_session_profiles(sessions, model_filter=None):
     return out
 
 
+def tool_histogram(sessions, model_filter=None):
+    """dict model -> Counter of ALL tool-call names (full usage distribution).
+
+    Computed from messages (not Turns), since Turn keeps only the first tool.
+    """
+    from collections import defaultdict, Counter
+    nl = model_filter.lower() if model_filter else None
+    hist = defaultdict(Counter)
+    for s in sessions:
+        s.parse()
+        for m in s.messages:
+            if m.role != "assistant" or not m.model:
+                continue
+            if nl and nl not in m.model.lower():
+                continue
+            for tc in m.tool_calls:
+                hist[m.model][tc.name] += 1
+    return hist
+
+
+def activity_by_day(sessions, model_filter=None):
+    """dict 'YYYY-MM-DD' -> {sessions, turns, models:Counter} — usage over time."""
+    from collections import defaultdict, Counter
+    nl = model_filter.lower() if model_filter else None
+    by_day = {}
+    for s in sessions:
+        s.parse()
+        day = s.modified.strftime("%Y-%m-%d")
+        d = by_day.setdefault(day, {"sessions": 0, "turns": 0, "models": Counter()})
+        d["sessions"] += 1
+        for t in s.turns:
+            if not t.model:
+                continue
+            if nl and nl not in t.model.lower():
+                continue
+            d["turns"] += 1
+            d["models"][t.model] += 1
+    return by_day
+
+
 # ─── Commands ────────────────────────────────────────────────────────────────
 
 class Command:
@@ -2266,10 +2306,14 @@ class ProfileCommand(Command):
 
         model_filter = getattr(args, "model", None)
         fmt = getattr(args, "format", "text")
+        min_turns = getattr(args, "min_turns", 0) or 0
 
         # --by-session: one row-group per session (the replication / confound view).
         if getattr(args, "by_session", False):
             rows = per_session_profiles(sessions, model_filter)
+            # --min-turns drops sub-threshold rows (e.g. 1-turn subagent transcripts).
+            rows = [(s, {m: p for m, p in d.items() if p["turns"] >= min_turns}) for s, d in rows]
+            rows = [(s, d) for s, d in rows if d]
             if not rows:
                 print("No assistant turns matched.")
                 return
@@ -2296,10 +2340,17 @@ class ProfileCommand(Command):
             print(json.dumps({m: profile_to_dict(behavioral_profile(ts)) for m, ts in groups.items()}, indent=2))
             return
 
+        show_tools = getattr(args, "tools", False)
+        hist = tool_histogram(sessions, model_filter) if show_tools else {}
         scope = f"session {sessions[0].short_id}" if in_session_id else f"{len(sessions)} session(s)"
         print(f"Behavioral profile over {scope}:\n")
         for model in sorted(groups, key=lambda k: -len(groups[k])):
             print(format_profile(model, behavioral_profile(groups[model])))
+            if show_tools and hist.get(model):
+                total = sum(hist[model].values())
+                print("    tool histogram:")
+                for name, c in hist[model].most_common():
+                    print(f"      {name:<16} {c:>5}  {100 * c / total:>3.0f}%")
             print()
 
 
@@ -2326,6 +2377,7 @@ class CompareCommand(Command):
 
         A, B = args.model_a, args.model_b
         fmt = getattr(args, "format", "text")
+        min_turns = getattr(args, "min_turns", 0) or 0
 
         # --by-session: A vs B per session (the replication view — was hand-built before).
         if getattr(args, "by_session", False):
@@ -2334,9 +2386,14 @@ class CompareCommand(Command):
                 s.parse()
                 a = [t for t in s.turns if t.model and A.lower() in t.model.lower()]
                 b = [t for t in s.turns if t.model and B.lower() in t.model.lower()]
-                if a or b:
-                    rows.append((s, behavioral_profile(a) if a else None,
-                                 behavioral_profile(b) if b else None))
+                pa = behavioral_profile(a) if a else None
+                pb = behavioral_profile(b) if b else None
+                if pa and pa["turns"] < min_turns:  # drop sub-threshold (e.g. subagent) rows
+                    pa = None
+                if pb and pb["turns"] < min_turns:
+                    pb = None
+                if pa or pb:
+                    rows.append((s, pa, pb))
             if not rows:
                 print(f'No turns matched "{A}" or "{B}".')
                 return
@@ -2392,6 +2449,40 @@ class CompareCommand(Command):
             ta = 100.0 * pa["first_tools"].get(t, 0) / pa["tool_turns"] if pa["tool_turns"] else 0
             tb = 100.0 * pb["first_tools"].get(t, 0) / pb["tool_turns"] if pb["tool_turns"] else 0
             print(f"    {t.ljust(12)} {ta:5.0f}% | {tb:5.0f}%")
+
+
+class ActivityCommand(Command):
+    """Sessions + turns per day (optionally per model) — usage over time."""
+
+    name = "activity"
+    aliases = ("timeline",)
+
+    def execute(self):
+        args = self.args
+        model_filter = getattr(args, "model", None)
+        sessions = find_all_sessions(args.project)
+        if model_filter:
+            sessions = [s for s in sessions if s.has_model(model_filter)]
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        by_day = activity_by_day(sessions, model_filter)
+        days = sorted(by_day)
+        fmt = getattr(args, "format", "text")
+        if fmt == "json":
+            print(json.dumps({d: {"sessions": v["sessions"], "turns": v["turns"],
+                                  "models": dict(v["models"])} for d, v in sorted(by_day.items())},
+                             indent=2))
+            return
+
+        by_model = getattr(args, "by_model", False)
+        print(f"Activity over {len(days)} day(s):\n")
+        print(f"  {'date':<12}{'sessions':>9}{'turns':>8}   {'models' if by_model else ''}")
+        for d in days:
+            v = by_day[d]
+            models = ("  " + ", ".join(f"{m}:{c}" for m, c in v["models"].most_common(4))) if by_model else ""
+            print(f"  {d:<12}{v['sessions']:>9}{v['turns']:>8}{models}")
 
 
 class ServeCommand(Command):
@@ -2720,7 +2811,7 @@ def _build_command_registry():
     classes = [
         ListCommand, SearchCommand, ExportCommand, BackupCommand,
         StatsCommand, ExtractCommand, ProfileCommand, CompareCommand,
-        ServeCommand, WikiCommand, ProtectCommand,
+        ActivityCommand, ServeCommand, WikiCommand, ProtectCommand,
     ]
     registry = {}
     for cls in classes:
@@ -3093,7 +3184,7 @@ _INTERACTIVE_HELP = (
 
 _VALID_COMMANDS = {
     "list", "ls", "search", "grep", "find", "export", "backup",
-    "stats", "extract", "profile", "compare", "diff",
+    "stats", "extract", "profile", "compare", "diff", "activity", "timeline",
     "serve", "web", "browse", "wiki", "archive", "protect",
 }
 
@@ -3330,6 +3421,8 @@ Examples:
     p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
     p.add_argument("--model", "-m", help="Restrict to models matching this substring")
     p.add_argument("--by-session", dest="by_session", action="store_true", help="One row-group per session (replication / confound view)")
+    p.add_argument("--min-turns", dest="min_turns", type=int, default=0, help="In --by-session, drop rows with fewer turns (filters 1-turn subagent noise)")
+    p.add_argument("--tools", action="store_true", help="Append full tool-usage histogram per model")
     p.add_argument("--format", choices=["text", "json"], default="text", help="Output format (json for charting/piping)")
 
     # compare — two-model delta table
@@ -3339,6 +3432,14 @@ Examples:
     p.add_argument("--project", "-p", help="Filter by project name")
     p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
     p.add_argument("--by-session", dest="by_session", action="store_true", help="A vs B per session (replication / confound view)")
+    p.add_argument("--min-turns", dest="min_turns", type=int, default=0, help="In --by-session, drop rows with fewer turns (filters 1-turn subagent noise)")
+    p.add_argument("--format", choices=["text", "json"], default="text", help="Output format (json for charting/piping)")
+
+    # activity — usage over time
+    p = sub.add_parser("activity", aliases=["timeline"], help="Sessions + turns per day (optionally per model)")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--model", "-m", help="Only sessions/turns from this model (substring)")
+    p.add_argument("--by-model", dest="by_model", action="store_true", help="Break the per-day turn counts down by model")
     p.add_argument("--format", choices=["text", "json"], default="text", help="Output format (json for charting/piping)")
 
     # serve

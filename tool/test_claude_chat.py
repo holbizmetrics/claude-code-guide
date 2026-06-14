@@ -1256,3 +1256,26 @@ def test_profile_line_flags_small_sample(tmp_path):
     turns = cc.collect_turns([s], "fable")["claude-fable-5"]   # 1 turn
     line = cc.profile_line("claude-fable-5", cc.behavioral_profile(turns))
     assert "n<5" in line                            # small-sample warning present
+
+
+def test_tool_histogram(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    hist = cc.tool_histogram([s])
+    assert hist["claude-fable-5"]["Read"] == 1
+    assert hist["claude-opus-4-8"]["Edit"] == 1
+
+
+def test_tool_histogram_model_filter(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    hist = cc.tool_histogram([s], "fable")
+    assert set(hist) == {"claude-fable-5"}
+
+
+def test_activity_by_day(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    s.parse()
+    day = s.modified.strftime("%Y-%m-%d")
+    act = cc.activity_by_day([s])
+    assert act[day]["sessions"] == 1
+    assert act[day]["turns"] == 2                    # fable turn + opus turn
+    assert act[day]["models"]["claude-fable-5"] == 1
