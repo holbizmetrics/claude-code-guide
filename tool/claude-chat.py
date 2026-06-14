@@ -46,7 +46,7 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import shlex
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 def _fix_windows_encoding():
     """Fix Windows console encoding (cp1252 can't handle Unicode)."""
@@ -3299,9 +3299,13 @@ _INTERACTIVE_HELP = (
     "  export SESSION --format html --rich   Rich HTML (math, tables, links)\n"
     "  export SESSION --format html --diagrams   Add mermaid tool-call diagram\n"
     "  stats                         Usage statistics\n"
+    "  profile                       Per-model behavioral fingerprint\n"
+    "  compare fable opus            Compare two models (delta table)\n"
+    "  activity                      Sessions + turns per day\n"
     "  extract SESSION --code        Extract code blocks\n"
     "  extract SESSION --ideas       Extract your messages\n"
     "  serve                         Open browser UI\n"
+    "  wiki --open                   Static cross-linked HTML archive\n"
     "  backup --watch                Continuous backup\n"
     "  protect                       Prevent auto-deletion\n"
     "  help                          Show this help\n"
@@ -3552,7 +3556,7 @@ Examples:
     p.add_argument("--limit", type=int, help="Per-item character cap (default: 300 for --ideas, ~130 for --decisions snippet window)")
 
     # profile — per-model behavioral fingerprint
-    p = sub.add_parser("profile", help="Per-model behavioral fingerprint (reasoning %, first-tools, tool intensity)")
+    p = sub.add_parser("profile", help="Per-model behavioral fingerprint (reasoning %%, first-tools, tool intensity)")
     p.add_argument("--project", "-p", help="Filter by project name")
     p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
     p.add_argument("--model", "-m", help="Restrict to models matching this substring")
@@ -3605,6 +3609,17 @@ def main():
     _fix_windows_encoding()
 
     parser = _build_parser()
+
+    # `help` is a REPL command; mirror it at the CLI so `claude-chat.py help`
+    # (and `help <command>`) print help instead of an argparse "invalid choice"
+    # error. There is no `help` subcommand — this is a pre-parse shim.
+    argv = sys.argv[1:]
+    if argv and argv[0] in ("help", "?"):
+        if len(argv) >= 2:
+            parser.parse_args([argv[1], "--help"])  # argparse prints + exits
+        parser.print_help()
+        return
+
     args = parser.parse_args()
 
     if not args.command:

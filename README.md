@@ -117,8 +117,11 @@ python3 claude-chat.py
 ```
 
 ```
-claude-chat v1.0.0 — interactive mode
-Type a command (list, search, export, stats, ...) or 'help'. Ctrl+C to exit.
+claude-chat v1.0.1 — interactive mode
+
+  (prints the full command list: list · search · export · stats · profile ·
+   compare · activity · extract · serve · wiki · backup · protect,
+   plus help · quit · !command)
 
 claude-chat> list --limit 5
 claude-chat> search "react hooks"
@@ -127,6 +130,9 @@ claude-chat> quit
 ```
 
 No need to retype `python3 claude-chat.py` for every command.
+
+For usage from the shell: `python3 claude-chat.py help` (also works as `-h`, or
+`help <command>` for a single command's flags). Inside interactive mode, type `help`.
 
 ### `list` — See all your sessions
 
@@ -188,6 +194,35 @@ python3 claude-chat.py stats --project myapp
 ```
 
 Shows: session count, message counts, tool call frequency, code blocks, models used, largest sessions, project breakdown.
+
+### `profile` — Per-model behavioral fingerprint
+
+```
+python3 claude-chat.py profile                   # All models
+python3 claude-chat.py profile --model fable     # One model (substring match)
+python3 claude-chat.py profile --by-session      # One row-group per session
+python3 claude-chat.py profile --tools           # Add per-model tool histogram
+```
+
+Per-model metrics: reasoning %, think-before-action %, first tools reached for, and tool intensity. Add `--format json` for charting or piping.
+
+### `compare` — Two-model delta table
+
+```
+python3 claude-chat.py compare fable opus                # A vs B, side by side
+python3 claude-chat.py compare fable opus --in a7e44ed0  # Within one session (controls for task)
+```
+
+Diffs two models' behavioral profiles (substring match on the model names). `--by-session` shows A vs B per session; aliased as `diff`.
+
+### `activity` — Usage over time
+
+```
+python3 claude-chat.py activity                  # Sessions + turns per day
+python3 claude-chat.py activity --by-model       # Break the per-day turns down by model
+```
+
+Aliased as `timeline`. Add `--format json` for charting.
 
 ### `extract` — Pull out specific content
 

@@ -1279,3 +1279,67 @@ def test_activity_by_day(tmp_path):
     assert act[day]["sessions"] == 1
     assert act[day]["turns"] == 2                    # fable turn + opus turn
     assert act[day]["models"]["claude-fable-5"] == 1
+
+
+# ─── Help / CLI surface ───────────────────────────────────────────────────────
+
+
+class TestHelpSurface:
+    """Regression tests for the 2026-06-14 help fixes.
+
+    Three bugs were found together and are guarded here:
+      1. parser.print_help() / `-h` crashed — a literal `%` in the `profile`
+         subcommand help was read by argparse as a format specifier
+         (ValueError: unsupported format character ',').
+      2. The interactive REPL help omitted profile/compare/activity/wiki.
+      3. `claude-chat.py help` errored ("invalid choice") instead of printing
+         help the way the REPL's `help` command does.
+    """
+
+    # ── Bug 1: full help must render without raising ──
+    def test_full_help_does_not_raise(self):
+        # format_help() runs the same %-interpolation print_help()/-h do.
+        # Before the fix the literal `%` in the profile help raised ValueError.
+        text = cc._build_parser().format_help()
+        assert "usage: claude-chat" in text
+
+    def test_profile_help_literal_percent_preserved(self):
+        # The escaped %% must render as a single literal % in output.
+        assert "reasoning %" in cc._build_parser().format_help()
+
+    def test_all_subparser_help_strings_interpolation_safe(self):
+        # Guard the whole surface, not just profile: every subparser's help
+        # must survive argparse's %-interpolation, now and for future commands.
+        parser = cc._build_parser()
+        for action in parser._actions:
+            if isinstance(action, cc.argparse._SubParsersAction):
+                for subparser in action.choices.values():
+                    subparser.format_help()  # raises if a help string is unsafe
+
+    # ── Bug 2: interactive help lists every primary command ──
+    def test_interactive_help_lists_all_primary_commands(self):
+        primary = [
+            "list", "search", "export", "backup", "stats", "extract",
+            "profile", "compare", "activity", "serve", "wiki", "protect",
+        ]
+        missing = [c for c in primary if c not in cc._INTERACTIVE_HELP]
+        assert not missing, f"interactive help omits: {missing}"
+
+    # ── Bug 3: `help` at the CLI prints help instead of erroring ──
+    def test_cli_help_prints_help(self, monkeypatch, capsys):
+        monkeypatch.setattr(cc.sys, "argv", ["claude-chat.py", "help"])
+        cc.main()  # bare `help` returns normally, no SystemExit
+        assert "usage: claude-chat" in capsys.readouterr().out
+
+    def test_cli_help_question_mark_alias(self, monkeypatch, capsys):
+        monkeypatch.setattr(cc.sys, "argv", ["claude-chat.py", "?"])
+        cc.main()
+        assert "usage: claude-chat" in capsys.readouterr().out
+
+    def test_cli_help_subcommand_forwards_to_subhelp(self, monkeypatch, capsys):
+        # `help export` → `export --help`; argparse prints and exits 0.
+        monkeypatch.setattr(cc.sys, "argv", ["claude-chat.py", "help", "export"])
+        with pytest.raises(SystemExit) as exc:
+            cc.main()
+        assert exc.value.code == 0
+        assert "export" in capsys.readouterr().out
