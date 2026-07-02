@@ -7,6 +7,19 @@ to follow [Semantic Versioning](https://semver.org/).
 Convention going forward: every bug fix lands with a regression test and a
 `### Fixed` entry here; new commands/flags land under `### Added`.
 
+## 1.1.4 — 2026-07-02
+
+Round 2 (third feature): **sidechain filtering** — legacy inline subagent traffic
+no longer pollutes parent-session metrics.
+
+### Fixed
+- Older transcripts embed subagent (Task) events flagged `isSidechain: true`
+  inline in the PARENT JSONL. `parse()` counted them as main-conversation
+  messages/turns, skewing `stats`, `profile`/`compare`, and exports. Now skipped
+  in a parent session — while a subagent's OWN transcript
+  (`subagents/agent-*.jsonl`, `is_subagent`) is unaffected (that IS its
+  conversation, not pollution). 2 new tests. Suite: 157 passed.
+
 ## 1.1.3 — 2026-07-02
 
 Round 2 (second feature): **thinking surfacing** — `Message.thinking` was parsed

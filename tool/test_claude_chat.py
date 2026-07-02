@@ -276,6 +276,48 @@ class TestParser:
         tc = [m for m in s.messages if m.role == "assistant"][0].tool_calls[0]
         assert tc.result is None
 
+    def test_sidechain_traffic_filtered_in_parent(self, tmp_path):
+        """isSidechain=true events (legacy inline subagent/Task traffic) are NOT
+        counted as main-conversation messages in a PARENT session."""
+        path = _write_jsonl(tmp_path, "scpa-0000-0000-0000-000000000000.jsonl", [
+            _user_line("real user question"),
+            {"type": "assistant", "isSidechain": True, "message": {"role": "assistant",
+                "model": "claude-opus-4-6",
+                "content": [{"type": "text", "text": "subagent chatter"}]}},
+            {"type": "user", "isSidechain": True,
+                "message": {"role": "user", "content": "subagent prompt"}},
+            _assistant_line("real answer"),
+        ])
+        s = Session(path)
+        s.parse()
+        texts = " ".join(m.text for m in s.messages)
+        assert "real user question" in texts
+        assert "real answer" in texts
+        assert "subagent chatter" not in texts
+        assert "subagent prompt" not in texts
+        assert len(s.messages) == 2   # only the two real messages
+
+    def test_subagent_own_transcript_not_filtered(self, tmp_path):
+        """A subagent's OWN transcript keeps its content even when its lines carry
+        isSidechain — that IS its conversation, not pollution of a parent."""
+        subdir = tmp_path / "parent-session" / "subagents"
+        subdir.mkdir(parents=True)
+        path = subdir / "agent-abc12345.jsonl"
+        with open(path, "w", encoding="utf-8") as f:
+            for line in [
+                {"type": "user", "isSidechain": True,
+                    "message": {"role": "user", "content": "subagent task"}},
+                {"type": "assistant", "isSidechain": True, "message": {"role": "assistant",
+                    "model": "claude-opus-4-6",
+                    "content": [{"type": "text", "text": "subagent did the work"}]}},
+            ]:
+                f.write(json.dumps(line) + "\n")
+        s = Session(path)
+        assert s.is_subagent
+        s.parse()
+        texts = " ".join(m.text for m in s.messages)
+        assert "subagent did the work" in texts   # NOT filtered here
+
 
 # ─── System-Reminder Filtering ──────────────────────────────────────────────
 

@@ -50,7 +50,7 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import shlex
 
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 
 def _fix_windows_encoding():
     """Fix Windows console encoding (cp1252 can't handle Unicode)."""
@@ -288,6 +288,15 @@ class Session:
                     try:
                         obj = json.loads(line)
                     except json.JSONDecodeError:
+                        continue
+
+                    # Legacy subagent (Task) filtering: older transcripts embed
+                    # sidechain events flagged isSidechain=true inline in the PARENT
+                    # JSONL. Counting them as main-conversation messages/turns skews
+                    # stats/profile/exports. A subagent's OWN transcript is parsed as
+                    # its own Session (is_subagent) — don't filter there, that IS its
+                    # conversation.
+                    if not self.is_subagent and obj.get("isSidechain"):
                         continue
 
                     msg_data = obj.get("message", obj)
