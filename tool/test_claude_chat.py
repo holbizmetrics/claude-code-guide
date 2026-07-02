@@ -248,14 +248,21 @@ class TestSystemReminderFilter:
         s.parse()
         assert len(s.messages) == 2
 
-    def test_system_reminder_in_middle_filtered(self, tmp_path):
-        """Message containing <system-reminder> anywhere should be filtered."""
+    def test_system_reminder_in_middle_stripped_text_kept(self, tmp_path):
+        """A reminder injected INTO a real prompt is stripped per-span; the
+        surrounding real text is KEPT. (v1.1.0 fix: Claude Code injects reminder
+        blocks into the same content as the real prompt, so dropping the whole
+        message deleted real prompts + swallowed the turn boundary. The old
+        behavior — drop-if-reminder-appears-anywhere — was the bug.)"""
         path = _write_jsonl(tmp_path, "sr3-0000-0000-0000-000000000000.jsonl", [
             _user_line("Some text before <system-reminder>hidden</system-reminder> after"),
         ])
         s = Session(path)
         s.parse()
-        assert len(s.messages) == 0
+        assert len(s.messages) == 1
+        assert "hidden" not in s.messages[0].text
+        assert "Some text before" in s.messages[0].text
+        assert "after" in s.messages[0].text
 
 
 # ─── _extract_text Filtering ────────────────────────────────────────────────

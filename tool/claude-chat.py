@@ -50,7 +50,7 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import shlex
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 def _fix_windows_encoding():
     """Fix Windows console encoding (cp1252 can't handle Unicode)."""

@@ -7,12 +7,31 @@ to follow [Semantic Versioning](https://semver.org/).
 Convention going forward: every bug fix lands with a regression test and a
 `### Fixed` entry here; new commands/flags land under `### Added`.
 
+## 1.1.1 — 2026-07-02
+
+Follow-up to 1.1.0: reconcile a test the 1.1.0 reminder-block fix intentionally
+broke — and which 1.1.0 shipped without noticing, because it was verified
+manually + by profile-diff but the existing pytest suite was **not run** (the
+"lint/test before done" miss, owned).
+
+### Fixed
+- `test_system_reminder_in_middle_filtered` asserted the OLD (buggy) behavior —
+  drop the whole message if a reminder appears anywhere. The 1.1.0 fix
+  deliberately changed this: strip the reminder span, KEEP the surrounding real
+  prompt. Test renamed → `test_system_reminder_in_middle_stripped_text_kept`
+  and now asserts the corrected behavior (reminder gone, real text on both sides
+  kept). Suite green: 150 passed.
+
+### Correction
+- The 1.1.0 notes implied a test harness would be *built* in round 2. It already
+  existed (`test_claude_chat.py`, since v1.0.1) — round 2 EXTENDS it, not builds it.
+
 ## 1.1.0 — 2026-07-02
 
 Round 1 of a blind adversarial review (14 findings; the structural rest is a
 named round 2: sidechain filtering, serve/wiki memory, mtime→timestamp dates,
 short-id collisions, TeX language whitelist, tool-result linking, thinking
-surfacing).
+surfacing — all EXTENDING the existing `test_claude_chat.py` suite, not building it).
 
 ### Fixed
 - **User messages carrying `<system-reminder>` blocks were dropped whole** —
