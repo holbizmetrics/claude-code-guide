@@ -50,7 +50,7 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import shlex
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 def _fix_windows_encoding():
     """Fix Windows console encoding (cp1252 can't handle Unicode)."""
@@ -95,13 +95,16 @@ class Message:
 
 
 class ToolCall:
-    """A tool invocation within an assistant message."""
-    __slots__ = ("name", "input_data", "result")
+    """A tool invocation within an assistant message. `id` is the tool_use id used
+    to link the tool's RESULT (which arrives in a later user message as a
+    tool_result block keyed by tool_use_id) back onto this call."""
+    __slots__ = ("name", "input_data", "result", "id")
 
-    def __init__(self, name, input_data=None, result=None):
+    def __init__(self, name, input_data=None, result=None, id=None):
         self.name = name
         self.input_data = input_data or {}
         self.result = result
+        self.id = id
 
     def summary(self):
         """One-line summary: tool name + key parameter."""
@@ -275,6 +278,7 @@ class Session:
 
         self.turns = []
         events = []  # ordered raw event log for turn segmentation (see _build_turns)
+        tool_results = {}  # tool_use_id -> result text, for tool-result linking
         try:
             with open(self.path, "r", encoding="utf-8", errors="replace") as f:
                 for line in f:
@@ -291,7 +295,17 @@ class Session:
                     ts = obj.get("timestamp")
 
                     if role == "user":
-                        text = self._extract_text(msg_data.get("content", ""))
+                        content = msg_data.get("content", "")
+                        # Collect tool_result blocks (tool OUTPUTS): they ride in a
+                        # user message keyed by tool_use_id, to be linked back onto
+                        # the ToolCall that produced them.
+                        if isinstance(content, list):
+                            for block in content:
+                                if isinstance(block, dict) and block.get("type") == "tool_result":
+                                    tid = block.get("tool_use_id")
+                                    if tid:
+                                        tool_results[tid] = self._tool_result_text(block)
+                        text = self._extract_text(content)
                         if text:
                             self.messages.append(Message("user", text, timestamp=ts))
                             # A text-bearing user message starts a new turn. tool_result-only
@@ -327,7 +341,8 @@ class Session:
                                 elif btype == "tool_use":
                                     tool_calls.append(ToolCall(
                                         block.get("name", "unknown"),
-                                        block.get("input", {})
+                                        block.get("input", {}),
+                                        id=block.get("id")
                                     ))
                                     if tool_idx is None:
                                         tool_idx = i
@@ -354,6 +369,15 @@ class Session:
                                         has_thinking=has_thinking)
                             self.messages.append(m)
 
+            # Tool-result linking: attach each tool's OUTPUT back onto its call by
+            # id. (The biggest export omission — exports showed tool inputs but
+            # never outputs, so a reader saw what was asked, never what came back.)
+            if tool_results:
+                for m in self.messages:
+                    for tc in m.tool_calls:
+                        if tc.id and tc.result is None:
+                            tc.result = tool_results.get(tc.id)
+
             self.turns = _build_turns(events)
         except (IOError, OSError):
             pass
@@ -365,6 +389,25 @@ class Session:
     # boundary, merging adjacent assistant turns (skewing every profile metric).
     # A message that was ONLY reminders still comes back empty and is skipped.
     _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+
+    def _tool_result_text(self, block):
+        """Extract displayable text from a tool_result block's content (str or
+        list of text/image blocks). Images collapse to a '[image]' marker."""
+        c = block.get("content", "")
+        if isinstance(c, str):
+            return c.strip()
+        if isinstance(c, list):
+            parts = []
+            for item in c:
+                if isinstance(item, dict):
+                    if item.get("type") == "text":
+                        parts.append(item.get("text", ""))
+                    elif item.get("type") == "image":
+                        parts.append("[image]")
+                elif isinstance(item, str):
+                    parts.append(item)
+            return "\n".join(parts).strip()
+        return ""
 
     def _extract_text(self, content):
         """Extract text from user message content (string or list)."""
@@ -1091,6 +1134,9 @@ class MarkdownExporter(Exporter):
                         input_str = input_str[:500]
                     lines.append(f"\n<details><summary>Tool: {tc.summary()}</summary>\n")
                     lines.append(f"```json\n{input_str}\n```")
+                    if tc.result:
+                        res = tc.result if self.no_truncate else tc.result[:1000]
+                        lines.append(f"\n**Result:**\n```\n{res}\n```")
                     lines.append(f"</details>\n")
                 lines.append("")
 
@@ -1383,10 +1429,15 @@ class HTMLExporter(Exporter):
                     input_preview = json.dumps(tc.input_data, indent=2)
                     if not no_truncate:
                         input_preview = input_preview[:400]
+                    result_html = ""
+                    if tc.result:
+                        res = tc.result if no_truncate else tc.result[:1000]
+                        result_html = (f"<div class=\"tool-result-label\">Result:</div>"
+                                       f"<pre>{html_mod.escape(res)}</pre>")
                     tools_html += f"""
                 <details class="tool-call">
                     <summary>{html_mod.escape(tc.summary())}</summary>
-                    <pre>{html_mod.escape(input_preview)}</pre>
+                    <pre>{html_mod.escape(input_preview)}</pre>{result_html}
                 </details>"""
 
             messages_html.append(f"""

@@ -7,6 +7,22 @@ to follow [Semantic Versioning](https://semver.org/).
 Convention going forward: every bug fix lands with a regression test and a
 `### Fixed` entry here; new commands/flags land under `### Added`.
 
+## 1.1.2 — 2026-07-02
+
+Round 2 (first feature): **tool-result linking** — the blind audit's biggest
+export omission.
+
+### Added
+- **Tool-result linking.** Each tool's OUTPUT — a `tool_result` block that
+  arrives in a later user message, keyed by `tool_use_id` — is now linked back
+  onto the `ToolCall` that produced it (`ToolCall.id` + `ToolCall.result`).
+  Exports previously showed tool INPUTS but never OUTPUTS, so re-reading an
+  exported session showed what was *asked* and never what came *back*. The
+  markdown and HTML exporters now render a **Result:** block under each tool call
+  (capped at 1000 chars unless `--no-truncate`). `tool_result` content given as a
+  list of text/image blocks is flattened (images → `[image]`). 3 new tests
+  (link-by-id, list-content flatten, unmatched-id stays None). Suite: 153 passed.
+
 ## 1.1.1 — 2026-07-02
 
 Follow-up to 1.1.0: reconcile a test the 1.1.0 reminder-block fix intentionally

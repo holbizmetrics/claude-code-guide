@@ -223,6 +223,59 @@ class TestParser:
         assert "Hello" in s.messages[0].text
         assert "World" in s.messages[0].text
 
+    def test_tool_result_linked_by_id(self, tmp_path):
+        """A tool_result (in a later user message) links back onto its ToolCall
+        by tool_use_id — so the tool's OUTPUT is available, not just its input."""
+        path = _write_jsonl(tmp_path, "trlk-0000-0000-0000-000000000000.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant",
+                "model": "claude-opus-4-6", "content": [
+                    {"type": "tool_use", "id": "tu_abc", "name": "Bash",
+                     "input": {"command": "ls"}}]}},
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu_abc",
+                 "content": "file1.txt\nfile2.txt"}]}},
+        ])
+        s = Session(path)
+        s.parse()
+        tc = [m for m in s.messages if m.role == "assistant"][0].tool_calls[0]
+        assert tc.id == "tu_abc"
+        assert tc.result == "file1.txt\nfile2.txt"
+
+    def test_tool_result_list_content_flattened(self, tmp_path):
+        """tool_result content given as a list of blocks (text + image) is
+        flattened to text; images collapse to a marker."""
+        path = _write_jsonl(tmp_path, "trlc-0000-0000-0000-000000000000.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant",
+                "model": "claude-opus-4-6", "content": [
+                    {"type": "tool_use", "id": "tu_xyz", "name": "Read",
+                     "input": {"file_path": "/a.txt"}}]}},
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu_xyz", "content": [
+                    {"type": "text", "text": "line one"},
+                    {"type": "image"}]}]}},
+        ])
+        s = Session(path)
+        s.parse()
+        tc = [m for m in s.messages if m.role == "assistant"][0].tool_calls[0]
+        assert "line one" in tc.result
+        assert "[image]" in tc.result
+
+    def test_tool_result_unmatched_id_stays_none(self, tmp_path):
+        """A tool_result whose id matches no call doesn't crash or mislink."""
+        path = _write_jsonl(tmp_path, "trum-0000-0000-0000-000000000000.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant",
+                "model": "claude-opus-4-6", "content": [
+                    {"type": "tool_use", "id": "tu_here", "name": "Bash",
+                     "input": {"command": "ls"}}]}},
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu_ELSEWHERE",
+                 "content": "orphan"}]}},
+        ])
+        s = Session(path)
+        s.parse()
+        tc = [m for m in s.messages if m.role == "assistant"][0].tool_calls[0]
+        assert tc.result is None
+
 
 # ─── System-Reminder Filtering ──────────────────────────────────────────────
 
