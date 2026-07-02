@@ -8,8 +8,10 @@ Commands:
     list                List all sessions with summaries
     search QUERY        Search across all conversations
     export SESSION_ID   Export a session (--format md/html/txt/tex)
+    open SESSION_ID     Render a session to HTML and open it in the browser
     backup              Backup sessions (--watch for continuous)
     stats               Show usage statistics
+    usage               Monthly token usage table (--by-model to split per model)
     extract SESSION_ID  Extract code blocks, user ideas, or decisions
     serve               Open conversations in your browser
     protect             Prevent Claude Code from deleting old sessions
@@ -46,7 +48,7 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import shlex
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"
 
 def _fix_windows_encoding():
     """Fix Windows console encoding (cp1252 can't handle Unicode)."""
@@ -288,7 +290,7 @@ class Session:
 
                     if role == "user":
                         text = self._extract_text(msg_data.get("content", ""))
-                        if text and "<system-reminder>" not in text:
+                        if text:
                             self.messages.append(Message("user", text, timestamp=ts))
                             # A text-bearing user message starts a new turn. tool_result-only
                             # user messages (text == "") are mid-turn and do NOT segment.
@@ -354,20 +356,42 @@ class Session:
         except (IOError, OSError):
             pass
 
+    # <system-reminder> blocks are stripped PER SPAN, not per message: Claude Code
+    # appends reminder blocks (hook context, file-change notices, CLAUDE.md loads)
+    # to the SAME content array as the real prompt. The old whole-message drop
+    # deleted real prompts from export/search/extract AND swallowed the turn
+    # boundary, merging adjacent assistant turns (skewing every profile metric).
+    # A message that was ONLY reminders still comes back empty and is skipped.
+    _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+
     def _extract_text(self, content):
         """Extract text from user message content (string or list)."""
         if isinstance(content, str):
-            return content.strip()
+            return self._REMINDER_RE.sub("", content).strip()
         if isinstance(content, list):
             parts = []
             for c in content:
                 if isinstance(c, dict):
                     if c.get("type") == "text":
-                        t = c.get("text", "")
+                        t = self._REMINDER_RE.sub("", c.get("text", ""))
                         if '"tool_result"' not in t[:50] and t.strip()[:15] != "Launching skill":
-                            parts.append(t)
+                            if t.strip():
+                                parts.append(t)
             return "\n".join(parts).strip()
         return ""
+
+    def raw_may_contain(self, needle_lower):
+        """Cheap prefilter: can this file contain the (plain, lowercased) needle at all?
+
+        Reads raw bytes as text, no JSON parse — lets `search` skip full parsing for
+        the ~95% of files that can't match. Callers must only use this for queries
+        that survive JSON encoding verbatim (ASCII, no quote/backslash/control chars);
+        on error we return True (never skip a file we couldn't check)."""
+        try:
+            with open(self.path, "r", encoding="utf-8", errors="replace") as f:
+                return needle_lower in f.read().lower()
+        except OSError:
+            return True
 
     def summary(self, max_len=100):
         """Get a one-line summary (first meaningful user message). Fast: reads first ~50 lines only."""
@@ -1798,7 +1822,7 @@ class ListCommand(Command):
                 print(f'No sessions with a model matching "{model_filter}".')
                 return
 
-        limit = args.limit or 20
+        limit = 20 if args.limit is None else args.limit  # `--limit 0` must mean 0, not 20
         detail = getattr(args, "detail", False)
         interactive = getattr(args, "_interactive", False)
         current_project = None
@@ -1890,9 +1914,17 @@ class SearchCommand(Command):
         if model_filter:
             sessions = [s for s in sessions if s.has_model(model_filter)]
 
+        # Raw-substring prefilter: only safe when the query survives JSON encoding
+        # verbatim (non-ASCII may be \uXXXX-escaped in the file; quotes/backslashes
+        # are escaped) — otherwise we'd get false negatives. scan() lowercases the
+        # same way, so a passing prefilter can never lose a real match.
+        prefilterable = (scanner.query.isascii()
+                         and not any(ch in scanner.query for ch in '"\\\n\r\t'))
         results = []
         for s in sessions:
             try:
+                if prefilterable and not s.raw_may_contain(scanner.query):
+                    continue
                 s.parse()
                 count, contexts = scanner.scan(s)
                 if count > 0:
@@ -1910,6 +1942,8 @@ class SearchCommand(Command):
                     if args.project.lower() in s.project.lower():
                         continue  # already searched
                     try:
+                        if prefilterable and not s.raw_may_contain(scanner.query):
+                            continue
                         s.parse()
                         c, _ = scanner.scan(s)
                         if c > 0:
@@ -1933,7 +1967,8 @@ class SearchCommand(Command):
         # When scoped to one session, show all matches; otherwise summarize per-session.
         preview_limit = 50 if in_session_id else 3
 
-        for s, count, contexts in results[:args.limit or 20]:
+        shown_limit = 20 if args.limit is None else args.limit
+        for s, count, contexts in results[:shown_limit]:
             if not in_session_id:
                 print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {count} matches  [{s.project}]")
             for role, snippet in contexts[:preview_limit]:
@@ -1950,6 +1985,9 @@ class SearchCommand(Command):
             if len(contexts) > preview_limit:
                 print(f"    ... and {len(contexts) - preview_limit} more matches")
             print()
+
+        if len(results) > shown_limit:
+            print(f"  ... and {len(results) - shown_limit} more session(s) — raise --limit to see them\n")
 
         print("Tip: `export <id> --format md` for human-reading (tool inputs truncated at 500 chars).")
         print("     `export <id> --format md --no-truncate` for byte-perfect file/edit recovery.")
@@ -1996,6 +2034,7 @@ class ExportCommand(Command):
             return
 
         filename = f"claude-chat_{session.short_id}_{session.modified.strftime('%Y%m%d')}{ext}"
+        out_dir.mkdir(parents=True, exist_ok=True)  # --output <newdir> used to die with a raw traceback
         out_path = out_dir / filename
 
         with open(out_path, "w", encoding="utf-8") as f:
@@ -2911,8 +2950,16 @@ class ProtectCommand(Command):
         if not SETTINGS_FILE.exists():
             settings = {}
         else:
-            with open(SETTINGS_FILE, "r") as f:
-                settings = json.load(f)
+            # This edits the file that configures Claude Code itself: read it as UTF-8
+            # (platform-default cp1252 mojibakes umlauts, then writes them back), and
+            # refuse to touch it at all if it doesn't parse cleanly.
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    settings = json.load(f)
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+                print(f"Refusing to modify {SETTINGS_FILE}: could not read it cleanly ({e}).")
+                print("Fix the file first — this command edits Claude Code's own configuration.")
+                return
 
         current = settings.get("cleanupPeriodDays")
         if current and current >= 99999:
@@ -2927,7 +2974,7 @@ class ProtectCommand(Command):
 
         # Atomic write: write to temp file, then rename (prevents corruption on crash)
         tmp = SETTINGS_FILE.with_suffix(".tmp")
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2)
             f.write("\n")
         tmp.replace(SETTINGS_FILE)
@@ -2938,12 +2985,88 @@ class ProtectCommand(Command):
 
 # ─── Command Registry ────────────────────────────────────────────────────────
 
+class OpenCommand(Command):
+    """Render a session to HTML in a temp dir and open it in the browser.
+
+    Thin alias for `export --format html --open` with a temp output dir — the
+    `list` tip advertised `open N` while no such command existed."""
+
+    name = "open"
+    aliases = ()
+
+    def execute(self):
+        import tempfile
+        args = self.args
+        args.format = "html"
+        args.output = str(Path(tempfile.gettempdir()) / "claude-chat-open")
+        args.stdout = False
+        args.open = True
+        ExportCommand(args).execute()
+
+
+class UsageCommand(Command):
+    """Per-month token usage summed from message.usage fields (raw line scan, no parse)."""
+
+    name = "usage"
+    aliases = ("tokens",)
+
+    def execute(self):
+        by_model = getattr(self.args, "by_model", False)
+        rows = {}
+        files = 0
+        for s in find_all_sessions(getattr(self.args, "project", None)):
+            files += 1
+            try:
+                with open(s.path, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        if '"usage"' not in line:
+                            continue
+                        try:
+                            o = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        msg = o.get("message") or {}
+                        u = msg.get("usage")
+                        ts = o.get("timestamp", "")
+                        if not u or not ts:
+                            continue
+                        key = (ts[:7], (msg.get("model") or "?") if by_model else "")
+                        d = rows.setdefault(key, {"in": 0, "out": 0, "cw": 0, "cr": 0, "msgs": 0})
+                        d["in"] += u.get("input_tokens", 0) or 0
+                        d["out"] += u.get("output_tokens", 0) or 0
+                        d["cw"] += u.get("cache_creation_input_tokens", 0) or 0
+                        d["cr"] += u.get("cache_read_input_tokens", 0) or 0
+                        d["msgs"] += 1
+            except OSError:
+                continue
+        if not rows:
+            print("No usage data found in transcripts.")
+            return
+        print(f"scanned {files} transcript file(s)\n")
+        hdr = f"{'month':8} "
+        if by_model:
+            hdr += f"{'model':34} "
+        hdr += f"{'msgs':>7} {'input':>12} {'output':>12} {'cache-write':>13} {'cache-read':>14} {'TOTAL':>14}"
+        print(hdr)
+        for (m, mdl) in sorted(rows):
+            d = rows[(m, mdl)]
+            total = d["in"] + d["out"] + d["cw"] + d["cr"]
+            line = f"{m:8} "
+            if by_model:
+                line += f"{mdl:34} "
+            line += f"{d['msgs']:>7,} {d['in']:>12,} {d['out']:>12,} {d['cw']:>13,} {d['cr']:>14,} {total:>14,}"
+            print(line)
+        print("\nfresh = input+output (the /usage-style number); TOTAL includes cache reads")
+        print("(what was actually processed). Counts THIS machine's transcripts only.")
+
+
 def _build_command_registry():
     """Map every command name + alias to its Command class."""
     classes = [
         ListCommand, SearchCommand, ExportCommand, BackupCommand,
         StatsCommand, ExtractCommand, ProfileCommand, CompareCommand,
         ActivityCommand, ServeCommand, WikiCommand, ProtectCommand,
+        OpenCommand, UsageCommand,
     ]
     registry = {}
     for cls in classes:
@@ -2994,6 +3117,14 @@ def cmd_wiki(args):
 
 def cmd_protect(args):
     ProtectCommand(args).execute()
+
+
+def cmd_open(args):
+    OpenCommand(args).execute()
+
+
+def cmd_usage(args):
+    UsageCommand(args).execute()
 
 
 # ─── HTML Templates ──────────────────────────────────────────────────────────
@@ -3320,9 +3451,9 @@ _INTERACTIVE_HELP = (
 )
 
 _VALID_COMMANDS = {
-    "list", "ls", "search", "grep", "find", "export", "backup",
-    "stats", "extract", "profile", "compare", "diff", "activity", "timeline",
-    "serve", "web", "browse", "wiki", "archive", "protect",
+    "list", "ls", "search", "grep", "find", "export", "open", "backup",
+    "stats", "usage", "tokens", "extract", "profile", "compare", "diff",
+    "activity", "timeline", "serve", "web", "browse", "wiki", "archive", "protect",
 }
 
 
@@ -3538,6 +3669,15 @@ Examples:
     p.add_argument("--diagrams", action="store_true", help="HTML: include a mermaid sequenceDiagram of tool calls")
     p.add_argument("--no-truncate", action="store_true", help="Render full tool-call inputs (md/html). Default truncates at 500/400 chars for human reading; use this for byte-perfect file recovery.")
 
+    # open — the `list` tip advertised `open N` while the command didn't exist
+    p = sub.add_parser("open", help="Render a session to HTML (temp dir) and open it in the browser")
+    p.add_argument("session_id", nargs="?", help="Session ID (full or first 8 chars). Omit when using --file.")
+    p.add_argument("--file", help="Path to a JSONL transcript file. Bypasses session lookup.")
+    p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
+    p.add_argument("--diagrams", action="store_true", help="Include a mermaid sequenceDiagram of tool calls")
+    p.add_argument("--no-truncate", action="store_true", help="Render full tool-call inputs")
+    p.set_defaults(func=cmd_open)
+
     # backup
     p = sub.add_parser("backup", help="Backup session files")
     p.add_argument("--watch", "-w", action="store_true", help="Watch continuously")
@@ -3546,6 +3686,11 @@ Examples:
     p.add_argument("--interval", "-i", type=int, default=10, help="Poll interval (seconds)")
 
     # stats
+    p = sub.add_parser("usage", aliases=["tokens"], help="Monthly token usage summed from transcript usage fields")
+    p.add_argument("--by-model", action="store_true", help="Split each month per model")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.set_defaults(func=cmd_usage)
+
     p = sub.add_parser("stats", help="Show usage statistics")
     p.add_argument("--project", "-p", help="Filter by project name")
     p.add_argument("--model", "-m", help="Only sessions with turns from this model (substring, e.g. fable)")

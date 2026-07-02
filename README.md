@@ -9,6 +9,8 @@ python3 claude-chat.py                               # Interactive mode
 python3 claude-chat.py list                          # See all your sessions
 python3 claude-chat.py search "react hooks"          # Search across everything
 python3 claude-chat.py export a7e44ed0 --format html # Export with dark theme
+python3 claude-chat.py open a7e44ed0                 # Render one session straight into the browser
+python3 claude-chat.py usage                         # Monthly token usage table (--by-model to split)
 python3 claude-chat.py serve                         # Browse in your browser
 python3 claude-chat.py wiki --open                   # Static, searchable HTML archive
 python3 claude-chat.py backup --watch                # Continuous backup
