@@ -7,6 +7,19 @@ to follow [Semantic Versioning](https://semver.org/).
 Convention going forward: every bug fix lands with a regression test and a
 `### Fixed` entry here; new commands/flags land under `### Added`.
 
+## 1.1.3 — 2026-07-02
+
+Round 2 (second feature): **thinking surfacing** — `Message.thinking` was parsed
+but rendered nowhere; half the parse work was write-only.
+
+### Added
+- **`export --thinking` / `open --thinking`.** Assistant reasoning blocks now
+  render as collapsible `<details>` sections in the markdown and HTML exporters
+  (before the response text — reasoning precedes answer). **Off by default**:
+  thinking is verbose and frequently encrypted-empty in real transcripts, so
+  it stays opt-in. Capped at 2000 chars unless `--no-truncate`. Wired through the
+  `export_markdown` / `export_html` wrappers too. 2 new tests. Suite: 155 passed.
+
 ## 1.1.2 — 2026-07-02
 
 Round 2 (first feature): **tool-result linking** — the blind audit's biggest

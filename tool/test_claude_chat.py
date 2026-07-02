@@ -655,6 +655,32 @@ class TestExports:
         md = cc.export_markdown(toolcall_session)
         assert "Read: config.yaml" in md
 
+    def test_markdown_thinking_off_by_default(self, tmp_path):
+        """Assistant reasoning is parsed but NOT rendered unless --thinking."""
+        path = _write_jsonl(tmp_path, "thk0-0000-0000-0000-000000000000.jsonl", [
+            _user_line("hi"),
+            _assistant_thinking_line("The answer is 4.", "reason: two plus two is four"),
+        ])
+        s = Session(path)
+        s.parse()
+        md_off = cc.export_markdown(s)
+        assert "reason: two plus two" not in md_off
+        assert "The answer is 4." in md_off       # response still shows
+        md_on = cc.export_markdown(s, thinking=True)
+        assert "reason: two plus two" in md_on     # reasoning now shown
+        assert "Thinking" in md_on
+
+    def test_html_thinking_flag(self, tmp_path):
+        """HTML export renders thinking only when the flag is set."""
+        path = _write_jsonl(tmp_path, "thk1-0000-0000-0000-000000000000.jsonl", [
+            _user_line("hi"),
+            _assistant_thinking_line("Answer.", "secret-reasoning-token"),
+        ])
+        s = Session(path)
+        s.parse()
+        assert "secret-reasoning-token" not in cc.export_html(s)
+        assert "secret-reasoning-token" in cc.export_html(s, thinking=True)
+
     def test_html_embedded_mode(self, basic_session):
         basic_session.parse()
         html = cc.export_html(basic_session, embedded=True)

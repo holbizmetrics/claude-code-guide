@@ -50,7 +50,7 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import shlex
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 
 def _fix_windows_encoding():
     """Fix Windows console encoding (cp1252 can't handle Unicode)."""
@@ -1080,12 +1080,14 @@ class Exporter:
 
     extension = ""  # override in subclasses
 
-    def __init__(self, session, *, no_truncate=False, embedded=False, rich=False, diagrams=False):
+    def __init__(self, session, *, no_truncate=False, embedded=False, rich=False,
+                 diagrams=False, thinking=False):
         self.session = session
         self.no_truncate = no_truncate
         self.embedded = embedded
         self.rich = rich
         self.diagrams = diagrams
+        self.thinking = thinking  # render assistant reasoning blocks (off by default)
 
     def format(self):
         """Return the formatted session string. Subclasses must override."""
@@ -1126,6 +1128,9 @@ class MarkdownExporter(Exporter):
                 lines.append("")
             elif m.role == "assistant":
                 lines.append(f"## Claude\n")
+                if self.thinking and m.thinking:
+                    think = m.thinking if self.no_truncate else m.thinking[:2000]
+                    lines.append(f"<details><summary>Thinking</summary>\n\n```\n{think}\n```\n</details>\n")
                 if m.text:
                     lines.append(m.text)
                 for tc in m.tool_calls:
@@ -1440,10 +1445,16 @@ class HTMLExporter(Exporter):
                     <pre>{html_mod.escape(input_preview)}</pre>{result_html}
                 </details>"""
 
+            # Thinking (reasoning) block — off by default, collapsible
+            thinking_html = ""
+            if self.thinking and m.role == "assistant" and m.thinking:
+                th = m.thinking if no_truncate else m.thinking[:2000]
+                thinking_html = (f'<details class="tool-call"><summary>Thinking</summary>'
+                                 f'<pre>{html_mod.escape(th)}</pre></details>')
             messages_html.append(f"""
         <div class="message {role_class}">
             <div class="role-label">{role_label}</div>
-            <div class="content">{text}{tools_html}</div>
+            <div class="content">{thinking_html}{text}{tools_html}</div>
         </div>""")
 
         nav = ""
@@ -1622,9 +1633,9 @@ EXPORTER_REGISTRY = {
 # downstream callers that import these names directly. Each is a thin wrapper
 # over the corresponding Exporter or HTMLExporter static method.
 
-def export_markdown(session, no_truncate=False):
+def export_markdown(session, no_truncate=False, thinking=False):
     """Export session as Markdown. Thin wrapper over MarkdownExporter."""
-    return MarkdownExporter(session, no_truncate=no_truncate).format()
+    return MarkdownExporter(session, no_truncate=no_truncate, thinking=thinking).format()
 
 
 def export_txt(session):
@@ -1637,7 +1648,7 @@ def export_tex(session):
     return TeXExporter(session).format()
 
 
-def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate=False):
+def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate=False, thinking=False):
     """Export session as HTML. Thin wrapper over HTMLExporter."""
     return HTMLExporter(
         session,
@@ -1645,6 +1656,7 @@ def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate
         rich=rich,
         diagrams=diagrams,
         no_truncate=no_truncate,
+        thinking=thinking,
     ).format()
 
 
@@ -2075,6 +2087,7 @@ class ExportCommand(Command):
             no_truncate=no_truncate,
             rich=getattr(args, "rich", False),
             diagrams=getattr(args, "diagrams", False),
+            thinking=getattr(args, "thinking", False),
         )
         content = exporter.format()
         ext = exporter_cls.extension
@@ -3722,6 +3735,7 @@ Examples:
     p.add_argument("--open", action="store_true", help="Open in browser/editor after export")
     p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
     p.add_argument("--diagrams", action="store_true", help="HTML: include a mermaid sequenceDiagram of tool calls")
+    p.add_argument("--thinking", action="store_true", help="Include assistant reasoning (thinking) blocks as collapsible sections (md/html). Off by default — thinking is verbose and often encrypted-empty in transcripts.")
     p.add_argument("--no-truncate", action="store_true", help="Render full tool-call inputs (md/html). Default truncates at 500/400 chars for human reading; use this for byte-perfect file recovery.")
 
     # open — the `list` tip advertised `open N` while the command didn't exist
@@ -3730,6 +3744,7 @@ Examples:
     p.add_argument("--file", help="Path to a JSONL transcript file. Bypasses session lookup.")
     p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
     p.add_argument("--diagrams", action="store_true", help="Include a mermaid sequenceDiagram of tool calls")
+    p.add_argument("--thinking", action="store_true", help="Include assistant reasoning (thinking) blocks")
     p.add_argument("--no-truncate", action="store_true", help="Render full tool-call inputs")
     p.set_defaults(func=cmd_open)
 
