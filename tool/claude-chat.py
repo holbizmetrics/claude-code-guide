@@ -28,6 +28,8 @@ Examples:
     python claude-chat.py serve
     python claude-chat.py stats --project crystal
     python claude-chat.py extract a7e44ed0 --code
+    python claude-chat.py open a7e44ed0                Render + open in browser
+    python claude-chat.py usage --by-model             Monthly token table per model
     python claude-chat.py protect
 
 Author: Holger Morlok (holbizmetrics)
@@ -3429,7 +3431,9 @@ _INTERACTIVE_HELP = (
     "  export SESSION --format html  Export session (md/html/txt/tex)\n"
     "  export SESSION --format html --rich   Rich HTML (math, tables, links)\n"
     "  export SESSION --format html --diagrams   Add mermaid tool-call diagram\n"
+    "  open SESSION                  Render to HTML (temp dir) + open in browser\n"
     "  stats                         Usage statistics\n"
+    "  usage                         Monthly token usage table (--by-model)\n"
     "  profile                       Per-model behavioral fingerprint\n"
     "  compare fable opus            Compare two models (delta table)\n"
     "  activity                      Sessions + turns per day\n"
