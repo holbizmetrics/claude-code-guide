@@ -1,0 +1,317 @@
+CLAUDE CODE: 15 THINGS I WISH I KNEW EARLIER
+==============================================
+
+You use Claude Code. You know how to prompt it, get stuff done, ship code. But there are features hiding in plain sight that solve problems you probably work around every day. Here are the ones that changed how I work.
+
+
+1. STOP LAUNCHING CLAUDE AND THEN TYPING
+-----------------------------------------
+
+The gap: You open Claude Code, wait for it to load, THEN type your first instruction. Every single time.
+
+The fix: Do it all in one shot from the terminal.
+
+  claude "Review the auth module for security gaps"
+
+It launches and immediately starts working. No warmup.
+
+Add a name so you can find it later:
+
+  claude -n "auth-review" "Check the login flow for vulnerabilities"
+
+Name + initial prompt + go. By the time the session is live, it's already working. You land running.
+
+
+2. SESSION NAMES ARE STATUS MESSAGES
+-------------------------------------
+
+The gap: You're juggling three sessions. You try to resume one and see a list of cryptic IDs or random first messages. Which one was which?
+
+The fix: Name your sessions. But the real trick is UPDATING the name as you go.
+
+  /rename "auth - building token refresh"
+  /rename "auth - waiting on API review"
+  /rename "auth - DONE, ready to merge"
+
+The name shows in the resume picker. When you have multiple sessions going, you see the current state of each one at a glance.
+
+Name at startup too:
+
+  claude -n "payment-v2"
+
+
+3. THE SESSION PICKER HAS HIDDEN CONTROLS
+-------------------------------------------
+
+The gap: You resume sessions by scrolling a list.
+
+The fix: Type "claude --resume" and use these keys:
+
+  P = Preview a session before opening it
+  R = Rename it right from the picker
+  / = Search and filter
+  A = Show ALL projects (not just current directory)
+  B = Filter by git branch
+
+It's a session manager, not just a list.
+
+
+4. BRANCH YOUR CONVERSATIONS
+------------------------------
+
+The gap: You want to try a risky approach but don't want to pollute your working session.
+
+The fix:
+
+  claude --resume my-session --fork-session
+
+New session, branched from the old one. Original untouched. Dead end? Go back. It works? Keep the fork.
+
+Git branches for conversations.
+
+Mid-session, you can also type /branch (or its alias /fork) to branch from where you are right now.
+
+
+5. YOUR CONTEXT WINDOW IS RUNNING OUT? FOCUS IT
+-------------------------------------------------
+
+The gap: Long session. Claude starts "forgetting" earlier context. You lose quality or start a new session and lose everything.
+
+The fix:
+
+  /compact focus on the authentication flow and the test failures from step 3
+
+This compresses the conversation but KEEPS what you told it to focus on. Fresh context window with the important stuff preserved. You don't have to choose between continuity and quality.
+
+
+6. SHELL COMMANDS AS CONVERSATION CONTEXT
+------------------------------------------
+
+The gap: You run a command in another terminal, copy the output, paste it into Claude, explain what it means.
+
+The fix: Just type ! before the command:
+
+  ! git log --oneline -10
+  ! npm test
+  ! cat error.log
+
+Output lands directly in the conversation. Claude sees it, reasons about it. No copy-paste, no explaining. Just bang-command and move on.
+
+
+7. CLAUDE AS A UNIX PIPE
+--------------------------
+
+The gap: You need a quick answer but don't want to start a whole session.
+
+The fix: Print mode.
+
+  cat build-errors.txt | claude -p "what went wrong?"
+  git diff | claude -p "write a commit message" > commit-msg.txt
+  git diff | claude -p "any security issues?" | mail -s "Review" team@co.com
+
+The -p flag means: answer and exit. No interactive session. Pipe in, pipe out. Build Claude into your shell workflows, scripts, CI/CD.
+
+
+8. KEYBOARD SHORTCUTS THAT CHANGE EVERYTHING
+----------------------------------------------
+
+These are the ones I use constantly:
+
+  Shift+Tab = Cycle permission modes. Tired of clicking "yes" on every file edit? Shift+Tab to "acceptEdits" mode. One keystroke.
+
+  Esc Esc = Rewind. Opens a message picker. Scroll back and RESTORE your code to any previous point. Undo on steroids.
+
+  Ctrl+V (Mac) / Alt+V (Windows/Linux) = Paste an image from clipboard. Screenshots, error dialogs, design mockups -- Claude sees them and reasons about them.
+
+  Ctrl+G = Open your prompt in an external editor. Write complex prompts in VS Code or Vim instead of a tiny terminal line.
+
+  Ctrl+O = Verbose mode. See Claude's internal reasoning in gray text. Understand WHY it made a decision.
+
+  Option+O (Mac) / Alt+O (Windows/Linux) = Fast mode toggle. Same model, faster output. Great for simple stuff.
+
+  Option+T (Mac) / Alt+T (Windows/Linux) = Extended thinking toggle. When you need Claude to think harder.
+
+
+9. SIDE QUESTIONS THAT DON'T INTERRUPT
+----------------------------------------
+
+The gap: Claude is in the middle of a big task. You have a quick question. If you type it, you derail the work.
+
+The fix:
+
+  /btw what's the name of that config file?
+
+Uses cached context (cheap). Gives you one answer. Does NOT go into conversation history. It's like whispering a question while someone is working -- they answer and keep going.
+
+
+10. CLAUDE.MD IS YOUR PROJECT'S PERSISTENT BRAIN
+--------------------------------------------------
+
+The gap: Every new session, you re-explain your project conventions. "We use TypeScript." "Tests go in __tests__." "Don't touch the legacy folder." Over and over.
+
+The fix: Put it in CLAUDE.md at your project root. Claude reads it automatically on every session.
+
+But here's what most people don't realize:
+
+  a) You can have NESTED CLAUDE.md files in subdirectories. Put API rules in src/api/CLAUDE.md. Frontend rules in src/ui/CLAUDE.md. They load only when Claude works in those directories.
+
+  b) You can import files with @:
+     "See @README for project overview"
+     "Follow @docs/coding-standards.md"
+
+  c) You can put path-specific rules in .claude/rules/:
+
+     ---
+     paths:
+       - "src/api/**/*.ts"
+     ---
+     Always validate input. Use try-catch. Log to the monitoring service.
+
+     These rules ONLY activate for matching files.
+
+  d) Your personal global instructions go in ~/.claude/CLAUDE.md. Applied to ALL projects. Your coding style, preferences, patterns -- write once, always active.
+
+
+11. STOP CLICKING "YES" FOR SAFE COMMANDS
+-------------------------------------------
+
+The gap: Claude asks permission for EVERY action. Reading files? "Yes." Running tests? "Yes." Git status? "Yes." You become a permission-clicking machine.
+
+The fix: In .claude/settings.json:
+
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Read"
+    ]
+  }
+
+Now Claude reads files and runs safe commands without asking. You only get prompted for things that actually need your attention.
+
+Or during a session: just hit Shift+Tab to cycle to "acceptEdits" mode. All file edits auto-approved.
+
+
+12. @ FOR INSTANT FILE REFERENCES
+-----------------------------------
+
+The gap: You type "look at the file at src/components/auth/login.tsx" and hope Claude finds it.
+
+The fix: Type @ and it triggers file path autocomplete.
+
+  Check @src/components/auth/login.tsx for the bug
+
+Direct reference. No ambiguity. Works mid-sentence.
+
+
+13. CUSTOM AGENTS: BUILD YOUR OWN TEAM
+----------------------------------------
+
+The gap: You keep giving Claude the same specialized instructions for recurring tasks.
+
+The fix: Create an agent file in .claude/agents/, for example security-reviewer.md:
+
+  ---
+  description: "Reviews code for security vulnerabilities"
+  tools:
+    - Read
+    - Grep
+    - Glob
+  ---
+  You are a security reviewer focused on OWASP top 10...
+
+Claude can spawn this as a subagent when the task fits. Build a library of agents for things you do repeatedly: code reviewer, test writer, documentation generator. Check the docs for the full set of frontmatter options.
+
+
+14. VISUAL SESSION TRACKING WITH /color
+-----------------------------------------
+
+The gap: Multiple terminal tabs, multiple sessions, they all look the same.
+
+The fix:
+
+  /color red
+  /color blue
+  /color green
+
+Changes the prompt bar color. Red for production work. Blue for experiments. Green for tests. You see at a glance which session is which.
+
+
+15. THE QUICK RETURNS
+-----------------------
+
+Quick things that punch above their weight:
+
+  claude -c            Resumes the MOST RECENT session. No picker, no searching.
+
+  /context             Shows a colored grid of your context window usage.
+                       If sessions feel "forgetful," this shows you why.
+
+  /cost                Token usage and costs for this session.
+
+  /doctor              Something broken? Diagnoses installation, settings,
+                       hooks, everything. Tells you what's wrong.
+
+  /diff                Interactive diff viewer. See exactly what changed.
+
+  --add-dir ../other   Add another directory to context. Work across repos.
+
+  --bare -p "query"    Fastest possible startup. Skips all loading.
+                       Perfect for scripts.
+
+  "ultrathink"         Put this word anywhere in a prompt to force
+                       maximum reasoning depth for that one turn.
+
+
+COMBINING TRICKS: REAL WORKFLOWS
+==================================
+
+INSTANT CODE REVIEW:
+  git diff | claude -p "any bugs or security issues?"
+
+NAMED EXPLORATION WITH SAFETY NET:
+  claude -n "risky-refactor"
+  (work... then /branch to fork if you want to try something wild)
+
+CROSS-REPO CONTEXT:
+  claude --add-dir ../shared-libs
+  (Claude now sees both projects)
+
+AUTOMATED COMMIT MESSAGES:
+  git diff --staged | claude -p "write a commit message" > .git/COMMIT_EDITMSG
+
+SESSION STATUS BOARD:
+  Name all sessions with /rename as you work.
+  Open "claude --resume" and you see a dashboard of where everything stands.
+
+COLOR-CODED WORKSTREAMS:
+  Terminal 1: /color red (production hotfix)
+  Terminal 2: /color blue (feature branch)
+  Terminal 3: /color green (test suite)
+
+
+WHERE THIS ALL LIVES
+======================
+
+Your sessions, memory, and settings are stored locally at:
+
+  ~/.claude/
+
+Sessions are persistent. They don't expire. You can resume any session from any time.
+
+  ~/.claude/projects/     Your sessions, grouped by project
+  ~/.claude/settings.json Your global settings and permissions
+  ~/.claude/CLAUDE.md     Your personal global instructions
+
+
+ONE MORE THING
+===============
+
+Type /help in any session to see all available commands. New ones get added regularly.
+
+Found a bug or want a feature?
+  github.com/anthropics/claude-code/issues
+
+Happy building.
