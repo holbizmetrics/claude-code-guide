@@ -315,6 +315,8 @@ For non-obvious patterns — recovering an overwritten file, diagnosing a subage
 
 This repo also hosts [The Complete Claude Code Guide](https://holbizmetrics.github.io/claude-code-guide/) — 50+ sections covering installation, hooks, memory, subagents, skills, MCP, YOLO mode, Android/Termux, and more.
 
+Android field guides in [`android/`](android/): the [Termux setup script](android/setup-claude-termux.sh) and [Disk Forensics with ADB, Shizuku & the force-stop experiment](android/disk-forensics-adb-shizuku.md) — finding what's silently eating your phone's storage, using Claude Code as the cockpit (real case: a YouTube client bug hoarding 50 GB).
+
 ## License
 
 MIT
