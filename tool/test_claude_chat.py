@@ -397,12 +397,35 @@ class TestExtractText:
     def test_none_returns_empty(self, basic_session):
         assert basic_session._extract_text(None) == ""
 
-    def test_non_text_blocks_ignored(self, basic_session):
+    def test_image_blocks_are_marked_not_dropped(self, basic_session):
+        """CONTRACT CHANGED 2026-07-25. This test previously asserted that image
+        blocks are IGNORED — it encoded the defect as intended behaviour. A user
+        message carrying an image was silently reduced to its caption, and an
+        image-ONLY message became empty text, which the parser then skips, so the
+        whole turn vanished from export/search/extract."""
         result = basic_session._extract_text([
-            {"type": "image", "data": "base64..."},
+            {"type": "image", "source": {"type": "base64",
+                                         "media_type": "image/png",
+                                         "data": "A" * 4096}},
             {"type": "text", "text": "Caption"},
         ])
-        assert result == "Caption"
+        assert "Caption" in result
+        assert "[image:" in result, "an image must leave a trace in text output"
+        assert "image/png" in result, "the marker should name the media type"
+
+    def test_image_only_message_is_not_empty(self, basic_session):
+        """The load-bearing consequence: non-empty text is what keeps the parser
+        from dropping an image-only user turn entirely."""
+        result = basic_session._extract_text([
+            {"type": "image", "source": {"type": "base64",
+                                         "media_type": "image/png", "data": "A" * 400}},
+        ])
+        assert result.strip() != "", "image-only message must not reduce to empty text"
+
+    def test_unknown_image_block_keeps_the_bare_marker(self, basic_session):
+        """Degenerate block (no source/media/data): the ORIGINAL '[image]' string,
+        so nothing that only ever saw the old marker changes."""
+        assert basic_session._extract_text([{"type": "image"}]) == "[image]"
 
 
 # ─── ToolCall.summary() ────────────────────────────────────────────────────

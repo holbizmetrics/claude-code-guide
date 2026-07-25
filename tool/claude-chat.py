@@ -76,9 +76,9 @@ SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 
 class Message:
     """A single message in a conversation."""
-    __slots__ = ("role", "text", "tool_calls", "thinking", "timestamp", "model", "has_thinking")
+    __slots__ = ("role", "text", "tool_calls", "thinking", "timestamp", "model", "has_thinking", "images")
 
-    def __init__(self, role, text="", tool_calls=None, thinking="", timestamp=None, model=None, has_thinking=False):
+    def __init__(self, role, text="", tool_calls=None, thinking="", timestamp=None, model=None, has_thinking=False, images=None):
         self.role = role
         self.text = text
         self.tool_calls = tool_calls or []
@@ -89,6 +89,10 @@ class Message:
         # content is empty (encrypted transcripts carry the block but no text) —
         # so "reasoning present" is measurable without confusing it with "no thinking".
         self.has_thinking = has_thinking
+        # Inline image blocks (source.type == "base64"): the transcript carries the
+        # FULL bytes, not a reference. Kept so renderers can embed them instead of
+        # discarding ~600 KB per image to print a five-character marker.
+        self.images = images or []
 
     def __repr__(self):
         return f"<Message {self.role}: {self.text[:60]}...>"
@@ -316,7 +320,8 @@ class Session:
                                         tool_results[tid] = self._tool_result_text(block)
                         text = self._extract_text(content)
                         if text:
-                            self.messages.append(Message("user", text, timestamp=ts))
+                            self.messages.append(Message("user", text, timestamp=ts,
+                                                         images=self._collect_images(content)))
                             # A text-bearing user message starts a new turn. tool_result-only
                             # user messages (text == "") are mid-turn and do NOT segment.
                             events.append(("U",))
@@ -375,7 +380,8 @@ class Session:
                         if text or tool_calls:
                             m = Message("assistant", text, tool_calls, thinking,
                                         timestamp=ts, model=msg_model or self.model,
-                                        has_thinking=has_thinking)
+                                        has_thinking=has_thinking,
+                                        images=self._collect_images(content))
                             self.messages.append(m)
 
             # Tool-result linking: attach each tool's OUTPUT back onto its call by
@@ -399,6 +405,49 @@ class Session:
     # A message that was ONLY reminders still comes back empty and is skipped.
     _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
 
+    @staticmethod
+    def _image_marker(item):
+        """Human-readable stand-in for an image block in TEXT output.
+
+        Was "[image]" (tool results) or nothing at all (user messages). Both lost the
+        one thing a reader needs: that an image was there, and roughly what. A marker
+        also keeps the message NON-EMPTY, which matters more than it looks -- the
+        parser skips user messages with empty text, so an image-ONLY paste used to
+        disappear from export/search/extract completely.
+        """
+        src = item.get("source") or {}
+        media = src.get("media_type") or ""
+        data = src.get("data") or ""
+        if data and media:
+            kb = (len(data) * 3 // 4) // 1024
+            return "[image: " + str(media) + ", ~" + str(kb) + " KB]"
+        if media:
+            return "[image: " + str(media) + "]"
+        # Nothing known about it -> the original bare marker. Keeping the old string
+        # for the degenerate case means existing callers/tests that only ever saw
+        # "[image]" are untouched; the richer form appears only when there is
+        # actually something richer to say.
+        return "[image]"
+
+    @staticmethod
+    def _collect_images(content):
+        """Inline base64 image blocks from a content list, in order.
+
+        Only source.type == "base64" is collected: a URL-source block carries no bytes
+        here and must not be faked into one.
+        """
+        out = []
+        if not isinstance(content, list):
+            return out
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "image":
+                continue
+            src = item.get("source") or {}
+            if src.get("type") == "base64" and src.get("data"):
+                out.append({"media_type": src.get("media_type") or "image/png",
+                            "data": src["data"]})
+        return out
+
     def _tool_result_text(self, block):
         """Extract displayable text from a tool_result block's content (str or
         list of text/image blocks). Images collapse to a '[image]' marker."""
@@ -412,7 +461,7 @@ class Session:
                     if item.get("type") == "text":
                         parts.append(item.get("text", ""))
                     elif item.get("type") == "image":
-                        parts.append("[image]")
+                        parts.append(self._image_marker(item))
                 elif isinstance(item, str):
                     parts.append(item)
             return "\n".join(parts).strip()
@@ -431,6 +480,12 @@ class Session:
                         if '"tool_result"' not in t[:50] and t.strip()[:15] != "Launching skill":
                             if t.strip():
                                 parts.append(t)
+                    elif c.get("type") == "image":
+                        # Previously dropped SILENTLY -- worse than the tool-result
+                        # path, which at least printed a marker. An image-only user
+                        # message then had empty text and the parser skipped it, so
+                        # the whole turn vanished from export/search/extract.
+                        parts.append(self._image_marker(c))
             return "\n".join(parts).strip()
         return ""
 
@@ -1460,10 +1515,29 @@ class HTMLExporter(Exporter):
                 th = m.thinking if no_truncate else m.thinking[:2000]
                 thinking_html = (f'<details class="tool-call"><summary>Thinking</summary>'
                                  f'<pre>{html_mod.escape(th)}</pre></details>')
+            # Images: the transcript carries the FULL bytes inline (source.type
+            # == "base64"), so the renderer can show the actual image instead of a
+            # marker -- no cache lookup, no external file, nothing to go stale. This
+            # is the whole reason the parser now keeps them: claude-chat was
+            # discarding ~600 KB of real image per block to print five characters.
+            images_html = ""
+            if getattr(m, "images", None):
+                for img in m.images:
+                    media = html_mod.escape(str(img.get("media_type") or "image/png"))
+                    data = img.get("data") or ""
+                    if not data:
+                        continue
+                    images_html += (
+                        f'<div class="msg-image">'
+                        f'<img src="data:{media};base64,{data}" '
+                        f'alt="pasted image ({media})" loading="lazy" '
+                        f'style="max-width:100%;height:auto;border-radius:6px;'
+                        f'border:1px solid rgba(128,128,128,.35);margin:.5rem 0">'
+                        f'</div>')
             messages_html.append(f"""
         <div class="message {role_class}">
             <div class="role-label">{role_label}</div>
-            <div class="content">{thinking_html}{text}{tools_html}</div>
+            <div class="content">{thinking_html}{text}{images_html}{tools_html}</div>
         </div>""")
 
         nav = ""
