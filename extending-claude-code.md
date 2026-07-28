@@ -25,7 +25,7 @@ infrastructure. What's wired here, by event:
 | `PreToolUse` on Write — reminders | Non-blocking nudges: first write into a sibling repo → "run the reuse scan first"; first write into heavyweight-process territory → "is this finding big enough for ceremony?" |
 | `PostToolUse` | Structural-drift noticer on source files (flags a file crossing size/shape thresholds; suggests one slice, never a rewrite). |
 | `Stop` — **blocking** | Push-verify: the session claims "all pushed / nothing stranded" while `git rev-list @{u}..HEAD` says otherwise → the stop is blocked until reality matches the claim. Output-budget: last message hit `max_tokens` → block, force chunked redelivery. Closeout enforcement: a done-declaration without the closing procedure's artifact → block. |
-| Speech | A hook pipes assistant output to a local TTS engine (Kokoro, CPU-only, 54 voices) — long runs are audible across the room, and a message bus monitor can *speak* incoming results. |
+| Speech | Two lanes: a `Stop` hook speaks the turn-end through a neural edge-tts voice (delegated to a proven speaker in a sibling repo), and a local Kokoro model (CPU-only, 54 voices) voices results fully offline — see the case study in Part 5. |
 
 **Hook lessons, all paid for:**
 
@@ -187,6 +187,87 @@ MCP: scratched by decision (see Part 2).
 - **`2>/dev/null` converts diagnosable failures into confident wrong output.** It cost this
   installation a silently-failed `git add` class (now hook-blocked) and, twice while producing
   this very document, an error message that would have explained everything instantly.
+
+---
+
+## Part 5 — Case studies: four ways to attach a thing
+
+Real integrations, each teaching a different attachment *geometry*. None of them needed an API
+key, and none needed the harness's cooperation beyond what it already emits.
+
+### 1. Outside-in, no API at all — StickShift
+
+[StickShift](https://github.com/earlyaidopters/stickshift) (Mark's project; there is also a
+Windows port) is a macOS menu-bar gearbox: pull a skeuomorphic H-pattern stick and the Claude
+Code (or Codex) session in the focused terminal pane changes model; drag the throttle and the
+reasoning effort changes. The integration mechanism is the radical part: **it never edits config
+files, never calls provider APIs, never uses terminal automation.** It reads the focused pane via
+OS Accessibility, *proves* the pane holds a local, code-signed agent that is idle with an empty
+composer, and then types the same `/model` and `/effort` commands you would type, as real
+keyboard events. Everything it cannot prove, it refuses — with a reason code instead of a
+keystroke.
+
+**Lesson:** the terminal itself is an integration surface. Anything that can *verify* the agent
+is idle can drive it through its own front door — and "refuse with a reason code when unproven"
+is the safety pattern that makes keystroke injection respectable.
+
+### 2. Inside-out — the speaking Stop hook
+
+A `Stop` hook makes the session speak its turn-end through a neural voice (edge-tts, detached
+`mpv` playback). Four design details carry it:
+
+- **Delegation, not reimplementation.** The hook is a thin wrapper around a proven speaker
+  script in a *sibling repo*. A second implementation was actually started in-repo — and
+  reverted the same session when a substrate scan found the working one a directory over.
+  Markdown-stripping and transcript-walking live in ONE place, owned by the original.
+- **Two-phase detach** — the hook returns instantly; audio plays on its own timeline. A Stop
+  hook that blocks on playback would wedge every turn-end.
+- **Serialized playback** (file lock) — back-to-back turns queue instead of duetting.
+- **Kill-switch file + graceful absence** — `touch .prometheus/voice-off` silences it;
+  on a machine without the speaker stack the hook exits 0 and the committed config travels
+  safely. A second, fully-offline lane (local Kokoro model, CPU-only) covers results-reading
+  and bus-message speech.
+
+**Lesson:** hooks are where the harness *pushes to you*. Keep them thin, instant, and inert
+where their dependencies are missing — the hook config is committed; the machines differ.
+
+### 3. Watch the exhaust — a read-only live console
+
+A standalone "Hollywood terminal" (green-on-black CRT, pure ANSI, zero dependencies) shows what
+the lab is doing right now — certified-fact ticker, message-bus traffic, which hooks have
+actually fired lately. The integration cost to the sessions being observed: **zero**. The
+console only reads files the system already produces — an event-store JSONL, the bus JSONL, and
+one-line fire-logs each hook appends about itself. Nothing asks the agent to render anything.
+
+**Lesson:** the cheapest integration is observing files that already exist. Claude Code's
+transcripts, your hooks' logs, your tools' ledgers — they are all watchable surfaces. If you
+want liveness visibility, have each hook log one JSONL line about its own firing; a dashboard
+falls out for free.
+
+### 4. Contract in a file — the avatar with swappable faces
+
+A browser page gives the assistant a physical presence: a breathing particle orb that performs
+the *stage directions already present in her replies* (`*settling in*`, `*leans in*`), pulsing
+with the live audio. The attachment is a **spool contract**: the page polls `spool/latest.json`;
+any speaker — the Stop hook above, a test driver, anything — "tees" a performance by writing
+`{text, gesture cues, audio path}` there. The renderer never knows who wrote the spool; the
+writer never knows who renders it.
+
+That decoupling paid off immediately: a second skin (a 140k-point GPU particle swarm with bloom)
+shipped with **zero contract changes**, and a third is sketched — a scene-painter canvas where
+the world being *talked about* draws itself into existence, one sentence at a time. Same spool,
+different face.
+
+**Lesson:** put the contract in a dumb file and keep the renderer dumb. The file IS the API — no
+server, no sockets, no coupling. A Stop hook is enough to give an agent a face; the face can be
+re-skinned forever without touching the agent.
+
+### The shape of all four
+
+Outside-in (screen-read + keystrokes), inside-out (hooks), exhaust-watching (files already
+written), contract-file (a JSON the two sides meet at). Between them they cover nearly anything
+you'd want to bolt on — and not one required the model's API, which is worth noticing before you
+reach for one.
 
 ---
 

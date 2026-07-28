@@ -2732,6 +2732,14 @@ Android/Termux) actually runs daily. Full write-up with all the hook lessons and
   <li><strong>Plumbing</strong> &mdash; plugins (package hooks+skills+agents against multi-machine drift), OpenTelemetry export (<code>CLAUDE_CODE_ENABLE_TELEMETRY=1</code> &mdash; the work-timer dataset for one env var), MCP servers (deliberately skipped in this installation; documented why in the write-up)</li>
 </ul>
 
+<h3>Case studies &mdash; four ways to attach a thing</h3>
+<ul>
+  <li><strong>Outside-in, no API</strong> &mdash; <a href="https://github.com/earlyaidopters/stickshift">StickShift</a>: a menu-bar H-pattern gearshift that changes the focused session's model/effort by <em>proving</em> the pane holds an idle agent (OS Accessibility), then typing <code>/model</code> as real keystrokes. Refuses with a reason code when unproven.</li>
+  <li><strong>Inside-out</strong> &mdash; a speaking <code>Stop</code> hook: neural edge-tts voice, two-phase detach (the hook returns instantly), lock-serialized playback, kill-switch file, inert on machines without the speaker stack. Plus a fully-offline Kokoro lane.</li>
+  <li><strong>Exhaust-watching</strong> &mdash; a zero-dependency CRT console that renders live lab state purely from files sessions already write (event store, bus JSONL, per-hook fire-logs). Integration cost to the observed sessions: zero.</li>
+  <li><strong>Contract-in-a-file</strong> &mdash; an avatar orb performing the assistant's own stage directions: any speaker writes <code>spool/latest.json</code>, a browser page polls it. Second skin (140k-point GPU swarm) shipped with zero contract changes; a scene-painter canvas is next.</li>
+</ul>
+
 <p>Adoption order picked here (2026-07-28): statusline + notification&rarr;push, verification
 panel as a saved workflow, OTel export. The one-line philosophy behind all of it: <strong>make the
 wiring refuse what the discipline used to merely discourage.</strong></p>
@@ -2844,7 +2852,8 @@ wiring refuse what the discipline used to merely discourage.</strong></p>
 
   <div class="status-bar">
     <span class="status-left">claude-code-guide &mdash; 50+ sections &mdash; Complete Reference</span>
-    <span class="status-right">Opus 4.6 &bull; March 2026</span>
+    <!-- this span reads "Fable 5.1" the day they let it out of red-teaming ;-) -->
+    <span class="status-right">Opus 4.6 &bull; Mar 2026 &mdash; field notes: Fable 5 &bull; Jul 2026</span>
   </div>
 
 </div><!-- terminal-window -->
