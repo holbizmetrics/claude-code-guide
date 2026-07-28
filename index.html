@@ -2507,11 +2507,37 @@ Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name
     <td><a href="https://github.com/anthropics/anthropic-cookbook">anthropics/anthropic-cookbook</a></td>
     <td>Practical examples</td>
   </tr>
+  <tr>
+    <td><strong>Claude Code Best Practices</strong></td>
+    <td><a href="https://www.anthropic.com/engineering/claude-code-best-practices">anthropic.com/engineering</a></td>
+    <td>Agentic-coding patterns from the team</td>
+  </tr>
+</table>
+
+<h3>Courses &amp; Certification</h3>
+<table>
+  <tr><th>Resource</th><th>URL</th><th>Best For</th></tr>
+  <tr>
+    <td><strong>Anthropic Academy</strong></td>
+    <td><a href="https://anthropic.skilljar.com/">anthropic.skilljar.com</a></td>
+    <td>Free official courses ("Claude Code in Action" &amp; more) + certification track</td>
+  </tr>
+  <tr>
+    <td><strong>freeCodeCamp: Claude Code Architect</strong></td>
+    <td><a href="https://www.youtube.com/watch?v=reDRM0tqhNs">youtube.com/watch?v=reDRM0tqhNs</a></td>
+    <td>Certification preparation, full-length walkthrough</td>
+  </tr>
+  <tr>
+    <td><strong>DeepLearning.AI short course</strong></td>
+    <td><a href="https://www.deeplearning.ai/short-courses/claude-code-a-highly-agentic-coding-assistant/">Claude Code: A Highly Agentic Coding Assistant</a></td>
+    <td>Structured intro to agentic workflows</td>
+  </tr>
 </table>
 
 <h3>Community</h3>
 <ul>
   <li><strong><a href="https://www.masterclaudecode.com/">masterclaudecode.com</a></strong> &mdash; Curated learning path</li>
+  <li><strong><a href="https://github.com/hesreallyhim/awesome-claude-code">awesome-claude-code</a></strong> &mdash; Community-curated list of skills, hooks, and tooling</li>
   <li><strong><a href="https://github.com/anthropics/claude-code/issues">GitHub Issues</a></strong> &mdash; Where bugs get fixed and features get discussed</li>
   <li><strong>r/ClaudeAI</strong> &mdash; Reddit community for tips, workflows, and troubleshooting</li>
 </ul>
@@ -2710,7 +2736,7 @@ Android/Termux) actually runs daily. Full write-up with all the hook lessons and
   <tr><td><code>PreToolUse</code> &mdash; blocking</td><td>Contract gates: a document missing its required field is <em>denied</em>; a state-changing git command with silenced stderr is <em>refused</em></td></tr>
   <tr><td><code>PreToolUse</code> &mdash; reminders</td><td>First write in a sibling repo &rarr; "run the reuse scan"; heavyweight-process territory &rarr; proportionality nudge</td></tr>
   <tr><td><code>Stop</code> hooks &mdash; blocking</td><td>Push-verify ("all pushed" while git is ahead &rarr; stop blocked), <code>max_tokens</code> truncation recovery, closeout enforcement</td></tr>
-  <tr><td>Speech hook</td><td>Assistant output &rarr; local Kokoro TTS; a message-bus monitor that <em>speaks</em> incoming results</td></tr>
+  <tr><td>Speech hooks</td><td>Turn-end speech via a neural edge-tts voice (a <code>Stop</code> hook delegating to a sibling repo's proven speaker); a second, fully-offline Kokoro lane voices results and bus messages</td></tr>
   <tr><td>Transcript JSONL</td><td>Post-hoc scanners over <code>~/.claude/projects/&lt;slug&gt;/</code> &mdash; per-session quality metrics no live hook could produce (and the reason <code>claude-chat.py</code> exists)</td></tr>
   <tr><td>Monitor + background</td><td>Persistent watch on a git-file inter-session message bus &mdash; concurrent sessions on different machines collaborate without the human relaying</td></tr>
 </table>
@@ -2748,9 +2774,13 @@ wiring refuse what the discipline used to merely discourage.</strong></p>
 
 <div class="callout">
   <div class="callout-title">Historical snapshot &mdash; March 2026</div>
-  Kept for provenance. Most of its recommendations have since been implemented and far exceeded
-  (the setup now runs dozens of hooks, blocking gates, a session-close procedure, an inter-session
-  bus). For the current state, see <a href="#extension-surfaces">Extending Claude Code</a> above.
+  Orientation for visitors: <strong>Prometheus is the author's research-agent architecture</strong>
+  &mdash; a cognitive-discipline layer driven <em>through</em> Claude Code &mdash; and what follows
+  is the assessment Claude Code generated of the author's own installation, kept verbatim
+  ("you/your" addresses the author, and the sample hooks are illustrative stubs, not working
+  code). Most of its recommendations have since been implemented and exceeded (the setup now runs
+  a dozen-plus hooks, blocking gates, a session-close procedure, an inter-session bus). For the
+  current state, see <a href="#extension-surfaces">Extending Claude Code</a> above.
 </div>
 
 <p>After analyzing the Prometheus v7.2 architecture installed at <code>MilleniumProblems/.skills/Prometheus/</code> alongside your Claude Code setup, here's an honest assessment.</p>

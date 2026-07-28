@@ -4,7 +4,8 @@
 [claude-code-2.1.x-features-and-hidden-commands.md](claude-code-2.1.x-features-and-hidden-commands.md).
 Everything in Part 1 runs daily on a real four-box fleet (two Windows machines, a Linux box, an
 Android phone under Termux) driving a research lab. Part 2 is the extension surface NOT yet
-attached, mapped honestly. Part 3 is the adoption order picked, Part 4 the scar tissue.
+attached, mapped with its gaps named. Part 3 is the adoption order picked, Part 4 the scar
+tissue, and Part 5 walks four real integrations — one per attachment geometry.
 Versions drift — treat specifics as observations, not contracts.*
 
 ---
@@ -16,11 +17,11 @@ Versions drift — treat specifics as observations, not contracts.*
 Claude Code's hook events are where an installation stops being a chat tool and becomes
 infrastructure. What's wired here, by event:
 
-| Event | What's attached |
+| Surface | What's attached |
 |---|---|
-| `SessionStart` (startup) | Boot scans: decayed-resource report, hypothesis⇌result registry join, mode-config sanity check. All **silent when clean**, all fail-open. |
+| `SessionStart` (startup) | Boot scans: a stale-resource report, a cross-registry consistency join, a config sanity check. All **silent when clean**, all fail-open. |
 | `SessionStart` (compact) | Re-injects project state after context compaction — the session picks up where the compacted one stood. |
-| `PreToolUse` on Write/Edit — **blocking** | Contract gates: a dispatch document missing its required `decidable-check:` line is *denied*; a results-ledger row that names no resolvable verifier is *denied*. The write physically cannot happen wrong. |
+| `PreToolUse` on Write/Edit — **blocking** | Contract gates: a document class missing its required machine-checkable field is *denied*; a results-ledger row that names no verifier is *denied*. The wrong write is refused at the moment of writing. |
 | `PreToolUse` on Bash — **blocking** | Refuses any state-changing git command with silenced stderr (`git add … 2>/dev/null`). A failed add makes no commit, so no later gate can see it — this is the one failure only a pre-hook can catch. |
 | `PreToolUse` on Write — reminders | Non-blocking nudges: first write into a sibling repo → "run the reuse scan first"; first write into heavyweight-process territory → "is this finding big enough for ceremony?" |
 | `PostToolUse` | Structural-drift noticer on source files (flags a file crossing size/shape thresholds; suggests one slice, never a rewrite). |
@@ -47,11 +48,11 @@ infrastructure. What's wired here, by event:
 ### Slash commands / skills
 
 Project skills live in `.claude/commands/` and `.claude/skills/`. Two conventions that earned
-their keep: **prefix-namespace your commands** (everything here is `pcla-*` after the native
-`/checkpoint` rewind command shadowed a same-named project command), and treat a skill as a
-*procedure* — the session-close skill here runs a six-gate checklist (retrospective, silence
-detection, log write, state persist + push, memory hygiene, insight capture) so "we're done" is a
-verified state, not a mood.
+their keep: **prefix-namespace your commands** (everything here carries a short lab prefix,
+adopted after the native `/checkpoint` rewind command shadowed a same-named project command), and
+treat a skill as a *procedure* — the session-close skill here runs a six-gate checklist
+(retrospective, blind-spot scan, log write, state persist + push, memory hygiene, insight
+capture) so "we're done" is a verified state, not a mood.
 
 ### CLAUDE.md as a boot loader
 
@@ -64,8 +65,8 @@ duplicates drift apart silently.
 
 One fact per file, an index file as the always-loaded surface, and a standing discipline:
 memory can be stale — verify against the artifact before acting on a remembered "fact." A
-six-month-old local clone presented as ground truth is this failure class; it happened while
-writing this document's sibling analysis.
+six-month-old local clone presented as ground truth is this failure class; it happened the very
+day this document was written, and was caught by the human, not the model.
 
 ### Headless `claude -p`
 
@@ -83,8 +84,8 @@ across turns.
 Every session is a JSONL file under `~/.claude/projects/<project-slug>/`. That surface is
 attachable: a post-hoc scanner here reads the session transcript at close and counts verdict-class
 statements that never named their evidence source — a per-session quality metric no live hook
-could produce. (This repo's `claude-chat.py` exists because of this surface: search, export,
-protect.)
+could produce. (This repo's [`tool/claude-chat.py`](tool/claude-chat.py) exists because of this
+surface: search, export, and protection from the 30-day auto-delete.)
 
 ### Beyond the harness: an inter-session bus
 
@@ -140,9 +141,10 @@ reading silence as deliberation.
 - **Plugins** — bundle hooks + skills + agents + config into one installable unit. Multi-machine
   drift (hooks present but dead on one box, per-machine settings) is exactly what plugin
   packaging versions away.
-- **OpenTelemetry export** (`CLAUDE_CODE_ENABLE_TELEMETRY=1`) — wall-clock, token, and
-  tool-latency metrics to a collector. If you've ever hand-built a work timer because an agent has
-  no clock between its own turns, this is that dataset for one env var.
+- **OpenTelemetry export** (`CLAUDE_CODE_ENABLE_TELEMETRY=1` at the time of writing — verify
+  against the docs' monitoring page) — wall-clock, token, and tool-latency metrics to a
+  collector. If you've ever hand-built a work timer because an agent has no clock between its own
+  turns, this is that dataset for one env var.
 
 ### Unused hook events (here)
 
@@ -197,8 +199,9 @@ key, and none needed the harness's cooperation beyond what it already emits.
 
 ### 1. Outside-in, no API at all — StickShift
 
-[StickShift](https://github.com/earlyaidopters/stickshift) (Mark's project; there is also a
-Windows port) is a macOS menu-bar gearbox: pull a skeuomorphic H-pattern stick and the Claude
+[StickShift](https://github.com/earlyaidopters/stickshift) (a community project by
+earlyaidopters; a Windows port has been merged upstream) is a macOS menu-bar gearbox: pull a
+skeuomorphic H-pattern stick and the Claude
 Code (or Codex) session in the focused terminal pane changes model; drag the throttle and the
 reasoning effort changes. The integration mechanism is the radical part: **it never edits config
 files, never calls provider APIs, never uses terminal automation.** It reads the focused pane via
@@ -246,9 +249,9 @@ falls out for free.
 
 ### 4. Contract in a file — the avatar with swappable faces
 
-A browser page gives the assistant a physical presence: a breathing particle orb that performs
-the *stage directions already present in her replies* (`*settling in*`, `*leans in*`), pulsing
-with the live audio. The attachment is a **spool contract**: the page polls `spool/latest.json`;
+A browser page gives an assistant persona a physical presence: a breathing particle orb that
+performs the *stage directions already present in its replies* (`*settling in*`, `*leans in*`),
+pulsing with the live audio. The attachment is a **spool contract**: the page polls `spool/latest.json`;
 any speaker — the Stop hook above, a test driver, anything — "tees" a performance by writing
 `{text, gesture cues, audio path}` there. The renderer never knows who wrote the spool; the
 writer never knows who renders it.
@@ -259,8 +262,8 @@ the world being *talked about* draws itself into existence, one sentence at a ti
 different face.
 
 **Lesson:** put the contract in a dumb file and keep the renderer dumb. The file IS the API — no
-server, no sockets, no coupling. A Stop hook is enough to give an agent a face; the face can be
-re-skinned forever without touching the agent.
+backend beyond a static file server, no sockets, no coupling. A Stop hook is enough to give an
+agent a face; the face can be re-skinned forever without touching the agent.
 
 ### The shape of all four
 
@@ -271,6 +274,7 @@ reach for one.
 
 ---
 
-*Written July 2026 from a live installation; the analyses behind Parts 1–3 were produced in
-session with Claude Code itself. The blocking-gate philosophy in Part 1 compresses to one line:
-make the wiring refuse what the discipline used to merely discourage.*
+*Written July 2026 from a live installation; the analyses behind Parts 1–3 and the case studies
+in Part 5 were produced in session with Claude Code itself, each grounded against the artifact
+before writing. The blocking-gate philosophy in Part 1 compresses to one line: make the wiring
+refuse what the discipline used to merely discourage.*
