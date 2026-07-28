@@ -317,6 +317,11 @@ This repo also hosts [The Complete Claude Code Guide](https://holbizmetrics.gith
 
 Android field guides in [`android/`](android/): the [Termux setup script](android/setup-claude-termux.sh) and [Disk Forensics with ADB, Shizuku & the force-stop experiment](android/disk-forensics-adb-shizuku.md) — finding what's silently eating your phone's storage, using Claude Code as the cockpit (real case: a YouTube client bug hoarding 50 GB).
 
+Companion documents:
+
+- [Extending Claude Code — field notes from a running installation](extending-claude-code.md) (July 2026) — the extension surfaces (hooks, skills, transcripts, headless, Monitor, and what's deliberately unused) as wired on a real four-box fleet, with the hard-won lessons and Windows scar tissue.
+- [Claude Code 2.1.x features & hidden commands](claude-code-2.1.x-features-and-hidden-commands.md)
+
 ## License
 
 MIT

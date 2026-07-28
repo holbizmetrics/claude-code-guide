@@ -600,7 +600,7 @@
 <nav>
   <div class="nav-header">
     <div class="prompt">&gt; claude-code-guide<span class="cursor"></span></div>
-    <div class="info">Complete Reference &bull; March 2026</div>
+    <div class="info">Complete Reference &bull; March 2026 &bull; Field Notes July 2026</div>
   </div>
 
   <a class="section-header">Getting Started</a>
@@ -679,6 +679,9 @@
   <a class="section-header">Resources</a>
   <a href="#resources">Learning Resources</a>
   <a href="tips.html">15 Things I Wish I Knew</a>
+
+  <a class="section-header">Field Notes (Jul 2026)</a>
+  <a href="#extension-surfaces">Extending Claude Code</a>
 
   <a class="section-header">Prometheus</a>
   <a href="#prometheus-analysis">Analysis &amp; Recs</a>
@@ -2693,7 +2696,54 @@ gh auth login</code></pre>
 
 <!-- ==================== PROMETHEUS ==================== -->
 
+<h2 id="extension-surfaces">Extending Claude Code &mdash; Field Notes from a Running Installation (July 2026)</h2>
+
+<p>What the March guide above documents as <em>features</em>, this section maps as <em>attachment
+points</em> &mdash; each grounded in what a real four-box fleet (two Windows machines, Linux,
+Android/Termux) actually runs daily. Full write-up with all the hook lessons and scar tissue:
+<a href="https://github.com/holbizmetrics/claude-code-guide/blob/master/extending-claude-code.md"><code>extending-claude-code.md</code></a>.</p>
+
+<h3>Surfaces in production</h3>
+<table>
+  <tr><th>Surface</th><th>What's attached</th></tr>
+  <tr><td><code>SessionStart</code> hooks</td><td>Boot scans (decayed resources, registry joins, config sanity) &mdash; silent when clean, fail-open; compact-source variant re-injects state after compaction</td></tr>
+  <tr><td><code>PreToolUse</code> &mdash; blocking</td><td>Contract gates: a document missing its required field is <em>denied</em>; a state-changing git command with silenced stderr is <em>refused</em></td></tr>
+  <tr><td><code>PreToolUse</code> &mdash; reminders</td><td>First write in a sibling repo &rarr; "run the reuse scan"; heavyweight-process territory &rarr; proportionality nudge</td></tr>
+  <tr><td><code>Stop</code> hooks &mdash; blocking</td><td>Push-verify ("all pushed" while git is ahead &rarr; stop blocked), <code>max_tokens</code> truncation recovery, closeout enforcement</td></tr>
+  <tr><td>Speech hook</td><td>Assistant output &rarr; local Kokoro TTS; a message-bus monitor that <em>speaks</em> incoming results</td></tr>
+  <tr><td>Transcript JSONL</td><td>Post-hoc scanners over <code>~/.claude/projects/&lt;slug&gt;/</code> &mdash; per-session quality metrics no live hook could produce (and the reason <code>claude-chat.py</code> exists)</td></tr>
+  <tr><td>Monitor + background</td><td>Persistent watch on a git-file inter-session message bus &mdash; concurrent sessions on different machines collaborate without the human relaying</td></tr>
+</table>
+
+<div class="callout">
+  <div class="callout-title">Hook lessons, all paid for</div>
+  Write hooks as <code>.sh</code> files (inline commands get MSYS-mangled on Windows) &bull;
+  gate on <code>CLAUDE_CODE_ENTRYPOINT=cli</code> or you contaminate headless <code>claude -p</code> &bull;
+  check the executable bit AND the git index mode &mdash; six correct hooks sat dead for days at <code>100644</code> &bull;
+  every blocking gate ships a planted-positive control (a gate that has only ever passed has been shown to run, not to work) &bull;
+  heuristics may <em>warn</em>; only authoritative signals (git state, <code>stop_reason</code>) may <em>block</em>.
+</div>
+
+<h3>Not yet attached (the catalog)</h3>
+<ul>
+  <li><strong>Orchestration</strong> &mdash; custom subagents (<code>.claude/agents/</code>), the Workflow tool + saved workflows (verification panels as ten-line scripts), worktree isolation for concurrent sessions</li>
+  <li><strong>Time</strong> &mdash; CronCreate for scheduled headless sweeps, <code>/schedule</code> cloud routines, <code>/loop</code> self-paced recurrence &mdash; nothing in most stacks fires without a human</li>
+  <li><strong>Reach &amp; presence</strong> &mdash; Notification hook + PushNotification (a blocked session pings your phone), statusline readouts, Artifacts as cross-device dashboards, Claude in Chrome</li>
+  <li><strong>Plumbing</strong> &mdash; plugins (package hooks+skills+agents against multi-machine drift), OpenTelemetry export (<code>CLAUDE_CODE_ENABLE_TELEMETRY=1</code> &mdash; the work-timer dataset for one env var), MCP servers (deliberately skipped in this installation; documented why in the write-up)</li>
+</ul>
+
+<p>Adoption order picked here (2026-07-28): statusline + notification&rarr;push, verification
+panel as a saved workflow, OTel export. The one-line philosophy behind all of it: <strong>make the
+wiring refuse what the discipline used to merely discourage.</strong></p>
+
 <h2 id="prometheus-analysis">Prometheus v7.2 + Claude Code: Analysis &amp; Recommendations</h2>
+
+<div class="callout">
+  <div class="callout-title">Historical snapshot &mdash; March 2026</div>
+  Kept for provenance. Most of its recommendations have since been implemented and far exceeded
+  (the setup now runs dozens of hooks, blocking gates, a session-close procedure, an inter-session
+  bus). For the current state, see <a href="#extension-surfaces">Extending Claude Code</a> above.
+</div>
 
 <p>After analyzing the Prometheus v7.2 architecture installed at <code>MilleniumProblems/.skills/Prometheus/</code> alongside your Claude Code setup, here's an honest assessment.</p>
 
@@ -2784,7 +2834,7 @@ gh auth login</code></pre>
 </ul>
 
 <footer>
-  <p>Generated by Claude Code (Opus 4.6) &mdash; March 2026</p>
+  <p>Generated by Claude Code (Opus 4.6) &mdash; March 2026 &bull; Field-notes section added July 2026 (Fable 5)</p>
   <p>From a deep-dive conversation covering installation, features, hooks, auto memory, hidden gems, and Prometheus integration analysis.</p>
 </footer>
 
