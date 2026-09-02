@@ -39,11 +39,18 @@ SCRIPT_VERSION="1.2.3"
 MIN_NODE_MAJOR=18
 NANODA_DIR="$HOME/nanoda_lib"
 
-# Pin Claude Code to the 1.x line. 2.x requires a platform-native binary
-# whose npm postinstall refuses to download on android-arm64, leaving the
-# CLI unable to start. Until 2.x has an Android path, 1.x is the only
-# version that actually runs in Termux.
-CLAUDE_PIN="@anthropic-ai/claude-code@^1"
+# Pin Claude Code to 2.1.112 -- the LAST npm release that ships cli.js and runs on
+# Termux's Node against Bionic. From 2.1.113 the package is a thin wrapper around a
+# glibc-linked linux-arm64 binary that Android's kernel refuses outright
+# ("unexpected e_type: 2"); see anthropics/claude-code issues #50270 and #20778 (both
+# unanswered by Anthropic as of 2026-09). The earlier "pin to 1.x" reason was stale:
+# every 2.x up to and including 2.1.112 runs here unchanged.
+#
+# Beyond 2.1.112 there is ONE working route, not native support: patch the official
+# arm64 binary to load through Termux's glibc-runner (ferrumclaudepilgrim/claude-code-android,
+# verified to 2.1.197 in July 2026; Android 8-10 stays on 2.1.112 because the newer
+# binary trips seccomp). That is a separate, opt-in step -- this script stays on npm.
+CLAUDE_PIN="@anthropic-ai/claude-code@2.1.112"
 
 # ── Parse flags (scan all args, not just $1) ────
 MODE="interactive"
@@ -377,8 +384,8 @@ elif check_cmd claude; then
     if check_claude_health; then
         ok "Claude Code working ($(get_claude_version))"
     else
-        warn "Claude Code binary found but not responding (likely 2.x without android-arm64 native binary)"
-        echo "   📦 Reinstalling pinned to 1.x ($CLAUDE_PIN)..."
+        warn "Claude Code binary found but not responding (likely >= 2.1.113: glibc binary, cannot exec on Bionic)"
+        echo "   📦 Reinstalling pinned to the last JS build ($CLAUDE_PIN)..."
         npm install -g "$CLAUDE_PIN" && ok "Claude Code reinstalled" || { fail "Reinstall failed"; exit 1; }
     fi
 else
