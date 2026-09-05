@@ -1,4 +1,4 @@
-"""test_list_json.py — `list --json` is a machine contract, so it gets asserted like one.
+"""test_list_json.py — `list --format json` is a machine contract, so it gets asserted like one.
 
 Added 2026-09-05 alongside the flag. The consumer (PCLA's session-restore) acts on
 these rows: it runs `claude --resume <session_id>` in `cwd`. Three fields are
@@ -79,8 +79,8 @@ def main():
         (sd / "custom-title.json").write_text(
             json.dumps({"customTitle": "wide-belt chrome extension"}))
 
-        r = run(home, "--json")
-        check("CONTROL: --json exits 0", r.returncode == 0)
+        r = run(home, "--format", "json")
+        check("CONTROL: --format json exits 0", r.returncode == 0)
         try:
             data = json.loads(r.stdout)
             parsed = True
@@ -113,13 +113,13 @@ def main():
         check("counts are reported (total and shown), not left to be inferred",
               data.get("total") == 2 and data.get("shown") == 2)
 
-        r2 = run(home, "--json", "--limit", "1")
+        r2 = run(home, "--format", "json", "--limit", "1")
         d2 = json.loads(r2.stdout)
         check("CONTROL: --limit still applies, and total != shown says so",
               d2["shown"] == 1 and d2["total"] == 2)
 
         r3 = run(home)
-        check("CONTROL: without --json the human output is unchanged (no JSON)",
+        check("CONTROL: without --format json the human output is unchanged (no JSON)",
               r3.returncode == 0 and not r3.stdout.lstrip().startswith("{"))
         check("CONTROL: ... and it still prints the session", "11111111" in r3.stdout)
 
@@ -127,7 +127,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         home = pathlib.Path(tmp) / "home"
         (home / ".claude" / "projects").mkdir(parents=True)
-        r = run(home, "--json")
+        r = run(home, "--format", "json")
         ok = False
         try:
             ok = json.loads(r.stdout)["total"] == 0

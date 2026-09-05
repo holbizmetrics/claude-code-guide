@@ -223,6 +223,101 @@ class TestParser:
         assert "Hello" in s.messages[0].text
         assert "World" in s.messages[0].text
 
+    def test_tool_result_linked_by_id(self, tmp_path):
+        """A tool_result (in a later user message) links back onto its ToolCall
+        by tool_use_id — so the tool's OUTPUT is available, not just its input."""
+        path = _write_jsonl(tmp_path, "trlk-0000-0000-0000-000000000000.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant",
+                "model": "claude-opus-4-6", "content": [
+                    {"type": "tool_use", "id": "tu_abc", "name": "Bash",
+                     "input": {"command": "ls"}}]}},
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu_abc",
+                 "content": "file1.txt\nfile2.txt"}]}},
+        ])
+        s = Session(path)
+        s.parse()
+        tc = [m for m in s.messages if m.role == "assistant"][0].tool_calls[0]
+        assert tc.id == "tu_abc"
+        assert tc.result == "file1.txt\nfile2.txt"
+
+    def test_tool_result_list_content_flattened(self, tmp_path):
+        """tool_result content given as a list of blocks (text + image) is
+        flattened to text; images collapse to a marker."""
+        path = _write_jsonl(tmp_path, "trlc-0000-0000-0000-000000000000.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant",
+                "model": "claude-opus-4-6", "content": [
+                    {"type": "tool_use", "id": "tu_xyz", "name": "Read",
+                     "input": {"file_path": "/a.txt"}}]}},
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu_xyz", "content": [
+                    {"type": "text", "text": "line one"},
+                    {"type": "image"}]}]}},
+        ])
+        s = Session(path)
+        s.parse()
+        tc = [m for m in s.messages if m.role == "assistant"][0].tool_calls[0]
+        assert "line one" in tc.result
+        assert "[image]" in tc.result
+
+    def test_tool_result_unmatched_id_stays_none(self, tmp_path):
+        """A tool_result whose id matches no call doesn't crash or mislink."""
+        path = _write_jsonl(tmp_path, "trum-0000-0000-0000-000000000000.jsonl", [
+            {"type": "assistant", "message": {"role": "assistant",
+                "model": "claude-opus-4-6", "content": [
+                    {"type": "tool_use", "id": "tu_here", "name": "Bash",
+                     "input": {"command": "ls"}}]}},
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu_ELSEWHERE",
+                 "content": "orphan"}]}},
+        ])
+        s = Session(path)
+        s.parse()
+        tc = [m for m in s.messages if m.role == "assistant"][0].tool_calls[0]
+        assert tc.result is None
+
+    def test_sidechain_traffic_filtered_in_parent(self, tmp_path):
+        """isSidechain=true events (legacy inline subagent/Task traffic) are NOT
+        counted as main-conversation messages in a PARENT session."""
+        path = _write_jsonl(tmp_path, "scpa-0000-0000-0000-000000000000.jsonl", [
+            _user_line("real user question"),
+            {"type": "assistant", "isSidechain": True, "message": {"role": "assistant",
+                "model": "claude-opus-4-6",
+                "content": [{"type": "text", "text": "subagent chatter"}]}},
+            {"type": "user", "isSidechain": True,
+                "message": {"role": "user", "content": "subagent prompt"}},
+            _assistant_line("real answer"),
+        ])
+        s = Session(path)
+        s.parse()
+        texts = " ".join(m.text for m in s.messages)
+        assert "real user question" in texts
+        assert "real answer" in texts
+        assert "subagent chatter" not in texts
+        assert "subagent prompt" not in texts
+        assert len(s.messages) == 2   # only the two real messages
+
+    def test_subagent_own_transcript_not_filtered(self, tmp_path):
+        """A subagent's OWN transcript keeps its content even when its lines carry
+        isSidechain — that IS its conversation, not pollution of a parent."""
+        subdir = tmp_path / "parent-session" / "subagents"
+        subdir.mkdir(parents=True)
+        path = subdir / "agent-abc12345.jsonl"
+        with open(path, "w", encoding="utf-8") as f:
+            for line in [
+                {"type": "user", "isSidechain": True,
+                    "message": {"role": "user", "content": "subagent task"}},
+                {"type": "assistant", "isSidechain": True, "message": {"role": "assistant",
+                    "model": "claude-opus-4-6",
+                    "content": [{"type": "text", "text": "subagent did the work"}]}},
+            ]:
+                f.write(json.dumps(line) + "\n")
+        s = Session(path)
+        assert s.is_subagent
+        s.parse()
+        texts = " ".join(m.text for m in s.messages)
+        assert "subagent did the work" in texts   # NOT filtered here
+
 
 # ─── System-Reminder Filtering ──────────────────────────────────────────────
 
@@ -248,14 +343,21 @@ class TestSystemReminderFilter:
         s.parse()
         assert len(s.messages) == 2
 
-    def test_system_reminder_in_middle_filtered(self, tmp_path):
-        """Message containing <system-reminder> anywhere should be filtered."""
+    def test_system_reminder_in_middle_stripped_text_kept(self, tmp_path):
+        """A reminder injected INTO a real prompt is stripped per-span; the
+        surrounding real text is KEPT. (v1.1.0 fix: Claude Code injects reminder
+        blocks into the same content as the real prompt, so dropping the whole
+        message deleted real prompts + swallowed the turn boundary. The old
+        behavior — drop-if-reminder-appears-anywhere — was the bug.)"""
         path = _write_jsonl(tmp_path, "sr3-0000-0000-0000-000000000000.jsonl", [
             _user_line("Some text before <system-reminder>hidden</system-reminder> after"),
         ])
         s = Session(path)
         s.parse()
-        assert len(s.messages) == 0
+        assert len(s.messages) == 1
+        assert "hidden" not in s.messages[0].text
+        assert "Some text before" in s.messages[0].text
+        assert "after" in s.messages[0].text
 
 
 # ─── _extract_text Filtering ────────────────────────────────────────────────
@@ -295,12 +397,35 @@ class TestExtractText:
     def test_none_returns_empty(self, basic_session):
         assert basic_session._extract_text(None) == ""
 
-    def test_non_text_blocks_ignored(self, basic_session):
+    def test_image_blocks_are_marked_not_dropped(self, basic_session):
+        """CONTRACT CHANGED 2026-07-25. This test previously asserted that image
+        blocks are IGNORED — it encoded the defect as intended behaviour. A user
+        message carrying an image was silently reduced to its caption, and an
+        image-ONLY message became empty text, which the parser then skips, so the
+        whole turn vanished from export/search/extract."""
         result = basic_session._extract_text([
-            {"type": "image", "data": "base64..."},
+            {"type": "image", "source": {"type": "base64",
+                                         "media_type": "image/png",
+                                         "data": "A" * 4096}},
             {"type": "text", "text": "Caption"},
         ])
-        assert result == "Caption"
+        assert "Caption" in result
+        assert "[image:" in result, "an image must leave a trace in text output"
+        assert "image/png" in result, "the marker should name the media type"
+
+    def test_image_only_message_is_not_empty(self, basic_session):
+        """The load-bearing consequence: non-empty text is what keeps the parser
+        from dropping an image-only user turn entirely."""
+        result = basic_session._extract_text([
+            {"type": "image", "source": {"type": "base64",
+                                         "media_type": "image/png", "data": "A" * 400}},
+        ])
+        assert result.strip() != "", "image-only message must not reduce to empty text"
+
+    def test_unknown_image_block_keeps_the_bare_marker(self, basic_session):
+        """Degenerate block (no source/media/data): the ORIGINAL '[image]' string,
+        so nothing that only ever saw the old marker changes."""
+        assert basic_session._extract_text([{"type": "image"}]) == "[image]"
 
 
 # ─── ToolCall.summary() ────────────────────────────────────────────────────
@@ -594,6 +719,32 @@ class TestExports:
         toolcall_session.parse()
         md = cc.export_markdown(toolcall_session)
         assert "Read: config.yaml" in md
+
+    def test_markdown_thinking_off_by_default(self, tmp_path):
+        """Assistant reasoning is parsed but NOT rendered unless --thinking."""
+        path = _write_jsonl(tmp_path, "thk0-0000-0000-0000-000000000000.jsonl", [
+            _user_line("hi"),
+            _assistant_thinking_line("The answer is 4.", "reason: two plus two is four"),
+        ])
+        s = Session(path)
+        s.parse()
+        md_off = cc.export_markdown(s)
+        assert "reason: two plus two" not in md_off
+        assert "The answer is 4." in md_off       # response still shows
+        md_on = cc.export_markdown(s, thinking=True)
+        assert "reason: two plus two" in md_on     # reasoning now shown
+        assert "Thinking" in md_on
+
+    def test_html_thinking_flag(self, tmp_path):
+        """HTML export renders thinking only when the flag is set."""
+        path = _write_jsonl(tmp_path, "thk1-0000-0000-0000-000000000000.jsonl", [
+            _user_line("hi"),
+            _assistant_thinking_line("Answer.", "secret-reasoning-token"),
+        ])
+        s = Session(path)
+        s.parse()
+        assert "secret-reasoning-token" not in cc.export_html(s)
+        assert "secret-reasoning-token" in cc.export_html(s, thinking=True)
 
     def test_html_embedded_mode(self, basic_session):
         basic_session.parse()
@@ -1129,3 +1280,226 @@ def test_summary_skips_continuation_summary(tmp_path):
     out = cc.Session(jsonl).summary()
     assert "continued from a previous" not in out.lower()
     assert out.startswith("Fix the parser bug")
+
+
+# ─── Model-aware features (per-turn model, profile, compare, extract --turns) ──
+
+def _mixed_model_session(tmp_path):
+    """A session that swaps model mid-stream (Fable then Opus) — the key case
+    the old per-session `self.model` collapsed."""
+    return cc.Session(_write_jsonl(tmp_path, "mix0-0000-0000-0000-000000000000.jsonl", [
+        _user_line("start"),
+        _assistant_tool_line("Read", {"file_path": "/a.py"}, text="grounding first", model="claude-fable-5"),
+        _assistant_line("a thought", model="claude-fable-5"),
+        _user_line("continue"),
+        _assistant_tool_line("Edit", {"file_path": "/a.py", "old_string": "x", "new_string": "y"},
+                             text="editing now", model="claude-opus-4-8"),
+    ]))
+
+
+def test_per_turn_model_tracked(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    tm = s.turn_models()
+    assert tm["claude-fable-5"] == 2
+    assert tm["claude-opus-4-8"] == 1
+
+
+def test_is_mixed_detection(tmp_path):
+    assert _mixed_model_session(tmp_path).is_mixed() is True
+
+
+def test_single_model_not_mixed(tmp_path):
+    s = cc.Session(_write_jsonl(tmp_path, "one0-0000-0000-0000-000000000000.jsonl", [
+        _user_line("hi"), _assistant_line("hello", model="claude-opus-4-8"),
+    ]))
+    assert s.is_mixed() is False
+
+
+def test_has_model_substring(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    assert s.has_model("fable") is True
+    assert s.has_model("opus") is True
+    assert s.has_model("sonnet") is False
+
+
+def test_turn_segmentation(tmp_path):
+    # Two fable assistant EVENTS under one user prompt collapse into ONE turn.
+    s = _mixed_model_session(tmp_path)
+    s.parse()
+    by_model = {}
+    for t in s.turns:
+        by_model.setdefault(t.model, []).append(t)
+    assert len(by_model["claude-fable-5"]) == 1   # 2 events → 1 turn
+    assert len(by_model["claude-opus-4-8"]) == 1
+
+
+def test_behavioral_profile_turn_based(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    fable_turns = cc.collect_turns([s], "fable")["claude-fable-5"]
+    p = cc.behavioral_profile(fable_turns)
+    assert p["turns"] == 1          # one response, not two events
+    assert p["tool_turns"] == 1
+    assert p["first_tools"]["Read"] == 1   # Fable opened with Read (grounding)
+    assert p["reasoning_pct"] == 0.0       # no thinking block in this turn
+    assert p["think_before_action_pct"] == 0.0
+
+
+def test_reasoning_and_think_before_action(tmp_path):
+    # One turn: a thinking-ONLY event (which the old parser dropped) THEN a tool event.
+    s = cc.Session(_write_jsonl(tmp_path, "thk0-0000-0000-0000-000000000000.jsonl", [
+        _user_line("go"),
+        {"type": "assistant", "message": {"role": "assistant", "model": "claude-fable-5",
+            "content": [{"type": "thinking", "thinking": "let me reason first"}]}},
+        _assistant_tool_line("Bash", {"command": "ls"}, model="claude-fable-5"),
+    ]))
+    turns = cc.collect_turns([s], "fable")["claude-fable-5"]
+    p = cc.behavioral_profile(turns)
+    assert p["turns"] == 1
+    assert p["reasoning_pct"] == 100.0          # thinking-only event preserved
+    assert p["think_before_action_pct"] == 100.0  # thinking came before the Bash action
+
+
+def test_collect_assistant_messages_model_filter(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    groups = cc.collect_assistant_messages([s], "opus")
+    assert set(groups) == {"claude-opus-4-8"}
+    assert len(groups["claude-opus-4-8"]) == 1
+
+
+def test_extract_turns_emits_jsonl(tmp_path, capsys):
+    s = _mixed_model_session(tmp_path)
+    s.parse()
+    cc.ExtractCommand._extract_turns(s)
+    lines = [l for l in capsys.readouterr().out.splitlines() if l.strip()]
+    recs = [json.loads(l) for l in lines]
+    assert recs[0]["role"] == "user"
+    asst = [r for r in recs if r["role"] == "assistant"]
+    assert asst[0]["model"] == "claude-fable-5"
+    assert asst[0]["tools"] == ["Read"]
+
+
+def test_per_session_profiles_groups_by_model(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    rows = cc.per_session_profiles([s])
+    assert len(rows) == 1                      # one session
+    sess, by_model = rows[0]
+    assert set(by_model) == {"claude-fable-5", "claude-opus-4-8"}
+    assert by_model["claude-fable-5"]["turns"] == 1
+
+
+def test_per_session_profiles_model_filter(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    rows = cc.per_session_profiles([s], "fable")
+    assert len(rows) == 1
+    assert set(rows[0][1]) == {"claude-fable-5"}   # opus filtered out
+
+
+def test_profile_to_dict_is_json_safe(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    turns = cc.collect_turns([s], "fable")["claude-fable-5"]
+    d = cc.profile_to_dict(cc.behavioral_profile(turns))
+    assert isinstance(d["first_tools"], dict)      # Counter -> dict
+    json.dumps(d)                                   # must not raise
+
+
+def test_profile_line_flags_small_sample(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    turns = cc.collect_turns([s], "fable")["claude-fable-5"]   # 1 turn
+    line = cc.profile_line("claude-fable-5", cc.behavioral_profile(turns))
+    assert "n<5" in line                            # small-sample warning present
+
+
+def test_tool_histogram(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    hist = cc.tool_histogram([s])
+    assert hist["claude-fable-5"]["Read"] == 1
+    assert hist["claude-opus-4-8"]["Edit"] == 1
+
+
+def test_tool_histogram_model_filter(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    hist = cc.tool_histogram([s], "fable")
+    assert set(hist) == {"claude-fable-5"}
+
+
+def test_activity_by_day(tmp_path):
+    s = _mixed_model_session(tmp_path)
+    s.parse()
+    day = s.modified.strftime("%Y-%m-%d")
+    act = cc.activity_by_day([s])
+    assert act[day]["sessions"] == 1
+    assert act[day]["turns"] == 2                    # fable turn + opus turn
+    assert act[day]["models"]["claude-fable-5"] == 1
+
+
+# ─── Help / CLI surface ───────────────────────────────────────────────────────
+
+
+class TestHelpSurface:
+    """Regression tests for the 2026-06-14 help fixes.
+
+    Three bugs were found together and are guarded here:
+      1. parser.print_help() / `-h` crashed — a literal `%` in the `profile`
+         subcommand help was read by argparse as a format specifier
+         (ValueError: unsupported format character ',').
+      2. The interactive REPL help omitted profile/compare/activity/wiki.
+      3. `claude-chat.py help` errored ("invalid choice") instead of printing
+         help the way the REPL's `help` command does.
+    """
+
+    # ── Bug 1: full help must render without raising ──
+    def test_full_help_does_not_raise(self):
+        # format_help() runs the same %-interpolation print_help()/-h do.
+        # Before the fix the literal `%` in the profile help raised ValueError.
+        text = cc._build_parser().format_help()
+        assert "usage: claude-chat" in text
+
+    def test_profile_help_literal_percent_preserved(self):
+        # The escaped %% must render as a single literal % in output.
+        assert "reasoning %" in cc._build_parser().format_help()
+
+    def test_all_subparser_help_strings_interpolation_safe(self):
+        # Guard the whole surface, not just profile: every subparser's help
+        # must survive argparse's %-interpolation, now and for future commands.
+        parser = cc._build_parser()
+        for action in parser._actions:
+            if isinstance(action, cc.argparse._SubParsersAction):
+                for subparser in action.choices.values():
+                    subparser.format_help()  # raises if a help string is unsafe
+
+    # ── Bug 2: interactive help lists every primary command ──
+    def test_interactive_help_lists_all_primary_commands(self):
+        primary = [
+            "list", "search", "export", "backup", "stats", "extract",
+            "profile", "compare", "activity", "serve", "wiki", "protect",
+        ]
+        missing = [c for c in primary if c not in cc._INTERACTIVE_HELP]
+        assert not missing, f"interactive help omits: {missing}"
+
+    # ── Bug 3: `help` at the CLI prints help instead of erroring ──
+    def test_cli_help_prints_help(self, monkeypatch, capsys):
+        monkeypatch.setattr(cc.sys, "argv", ["claude-chat.py", "help"])
+        cc.main()  # bare `help` returns normally, no SystemExit
+        assert "usage: claude-chat" in capsys.readouterr().out
+
+    def test_cli_help_question_mark_alias(self, monkeypatch, capsys):
+        monkeypatch.setattr(cc.sys, "argv", ["claude-chat.py", "?"])
+        cc.main()
+        assert "usage: claude-chat" in capsys.readouterr().out
+
+    def test_cli_help_subcommand_forwards_to_subhelp(self, monkeypatch, capsys):
+        # `help export` → `export --help`; argparse prints and exits 0.
+        monkeypatch.setattr(cc.sys, "argv", ["claude-chat.py", "help", "export"])
+        with pytest.raises(SystemExit) as exc:
+            cc.main()
+        assert exc.value.code == 0
+        assert "export" in capsys.readouterr().out
+
+    # ── 1.0.2: top-level Examples block must cover analytics + model filter ──
+    def test_top_level_examples_cover_analytics_and_model_filter(self):
+        # The positional-args list always names the subcommands; this guards the
+        # curated Examples (epilog) specifically — they went stale in 1.0.1,
+        # omitting profile/compare/activity/wiki and any --model example.
+        epilog = cc._build_parser().epilog or ""
+        for token in ("--model", "profile", "compare", "activity", "wiki"):
+            assert token in epilog, f"top-level Examples missing: {token}"

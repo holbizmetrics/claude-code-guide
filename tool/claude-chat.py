@@ -8,8 +8,10 @@ Commands:
     list                List all sessions with summaries
     search QUERY        Search across all conversations
     export SESSION_ID   Export a session (--format md/html/txt/tex)
+    open SESSION_ID     Render a session to HTML and open it in the browser
     backup              Backup sessions (--watch for continuous)
     stats               Show usage statistics
+    usage               Monthly token usage table (--by-model to split per model)
     extract SESSION_ID  Extract code blocks, user ideas, or decisions
     serve               Open conversations in your browser
     protect             Prevent Claude Code from deleting old sessions
@@ -26,6 +28,8 @@ Examples:
     python claude-chat.py serve
     python claude-chat.py stats --project crystal
     python claude-chat.py extract a7e44ed0 --code
+    python claude-chat.py open a7e44ed0                Render + open in browser
+    python claude-chat.py usage --by-model             Monthly token table per model
     python claude-chat.py protect
 
 Author: Holger Morlok (holbizmetrics)
@@ -46,7 +50,7 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import shlex
 
-__version__ = "1.0.0"
+__version__ = "1.1.4"
 
 def _fix_windows_encoding():
     """Fix Windows console encoding (cp1252 can't handle Unicode)."""
@@ -72,28 +76,39 @@ SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 
 class Message:
     """A single message in a conversation."""
-    __slots__ = ("role", "text", "tool_calls", "thinking", "timestamp", "model")
+    __slots__ = ("role", "text", "tool_calls", "thinking", "timestamp", "model", "has_thinking", "images")
 
-    def __init__(self, role, text="", tool_calls=None, thinking="", timestamp=None, model=None):
+    def __init__(self, role, text="", tool_calls=None, thinking="", timestamp=None, model=None, has_thinking=False, images=None):
         self.role = role
         self.text = text
         self.tool_calls = tool_calls or []
         self.thinking = thinking
         self.timestamp = timestamp
         self.model = model
+        # True when a thinking/redacted_thinking block was present, even if its
+        # content is empty (encrypted transcripts carry the block but no text) —
+        # so "reasoning present" is measurable without confusing it with "no thinking".
+        self.has_thinking = has_thinking
+        # Inline image blocks (source.type == "base64"): the transcript carries the
+        # FULL bytes, not a reference. Kept so renderers can embed them instead of
+        # discarding ~600 KB per image to print a five-character marker.
+        self.images = images or []
 
     def __repr__(self):
         return f"<Message {self.role}: {self.text[:60]}...>"
 
 
 class ToolCall:
-    """A tool invocation within an assistant message."""
-    __slots__ = ("name", "input_data", "result")
+    """A tool invocation within an assistant message. `id` is the tool_use id used
+    to link the tool's RESULT (which arrives in a later user message as a
+    tool_result block keyed by tool_use_id) back onto this call."""
+    __slots__ = ("name", "input_data", "result", "id")
 
-    def __init__(self, name, input_data=None, result=None):
+    def __init__(self, name, input_data=None, result=None, id=None):
         self.name = name
         self.input_data = input_data or {}
         self.result = result
+        self.id = id
 
     def summary(self):
         """One-line summary: tool name + key parameter."""
@@ -136,6 +151,92 @@ class ToolCall:
             if s:
                 return f"Skill: {s}"
         return self.name
+
+
+class Turn:
+    """One user prompt + the assistant's full (possibly multi-event) response.
+
+    Claude Code emits a single assistant response as SEVERAL transcript events
+    (a thinking event, then a text event, then a tool_use event, ...). A Turn
+    aggregates those events back into one unit so behavioral metrics are measured
+    per response ("how it opens a task"), not per raw event.
+    """
+
+    __slots__ = ("model", "n_tools", "first_tool", "narration_chars",
+                 "thinking_chars", "has_reasoning", "think_before_action")
+
+    def __init__(self, model, n_tools, first_tool, narration_chars,
+                 thinking_chars, has_reasoning, think_before_action):
+        self.model = model
+        self.n_tools = n_tools
+        self.first_tool = first_tool                # name of the first tool used in the turn, or None
+        self.narration_chars = narration_chars
+        self.thinking_chars = thinking_chars
+        self.has_reasoning = has_reasoning          # any thinking event present in the turn
+        self.think_before_action = think_before_action  # True/False for tool-turns, None if no tool
+
+
+def _finalize_turn(aevents):
+    """Aggregate a turn's ordered assistant events into a Turn.
+
+    aevents: list of ("A", model, has_thinking, think_idx, tool_idx, tool_names, text_len, think_len).
+    think_before_action is resolved at the FIRST tool event: True if any earlier
+    event reasoned, or the action event itself reasoned before its first tool.
+    """
+    if not aevents:
+        return None
+    model = aevents[0][1]
+    n_tools = narration = thinking_chars = 0
+    first_tool = None
+    has_reasoning = False
+    think_before_action = None
+    thinking_seen_before_first_tool = False
+    for (_, _mdl, has_think, think_idx, tool_idx, tool_names, text_len, think_len) in aevents:
+        narration += text_len
+        thinking_chars += think_len
+        if has_think:
+            has_reasoning = True
+        if tool_names and first_tool is None:
+            first_tool = tool_names[0]
+            if thinking_seen_before_first_tool:
+                think_before_action = True
+            elif has_think and think_idx is not None and tool_idx is not None and think_idx < tool_idx:
+                think_before_action = True
+            else:
+                think_before_action = False
+        if tool_names:
+            n_tools += len(tool_names)
+        if has_think and first_tool is None:
+            thinking_seen_before_first_tool = True
+    return Turn(model, n_tools, first_tool, narration, thinking_chars,
+                has_reasoning, think_before_action)
+
+
+def _build_turns(events):
+    """Segment an ordered event log into Turn objects.
+
+    events: ("U",) boundaries (text-bearing user messages) and
+            ("A", ...) assistant events. Assistant events accumulate into the
+            current turn; each ("U",) closes the previous turn and opens a new one.
+    """
+    turns = []
+    current = None
+    for ev in events:
+        if ev[0] == "U":
+            if current is not None:
+                t = _finalize_turn(current)
+                if t:
+                    turns.append(t)
+            current = []
+        else:  # ("A", ...)
+            if current is None:
+                current = []   # assistant events before the first user message
+            current.append(ev)
+    if current:
+        t = _finalize_turn(current)
+        if t:
+            turns.append(t)
+    return turns
 
 
 class Session:
@@ -238,6 +339,9 @@ class Session:
             return
         self._parsed = True
 
+        self.turns = []
+        events = []  # ordered raw event log for turn segmentation (see _build_turns)
+        tool_results = {}  # tool_use_id -> result text, for tool-result linking
         try:
             with open(self.path, "r", encoding="utf-8", errors="replace") as f:
                 for line in f:
@@ -249,63 +353,213 @@ class Session:
                     except json.JSONDecodeError:
                         continue
 
+                    # Legacy subagent (Task) filtering: older transcripts embed
+                    # sidechain events flagged isSidechain=true inline in the PARENT
+                    # JSONL. Counting them as main-conversation messages/turns skews
+                    # stats/profile/exports. A subagent's OWN transcript is parsed as
+                    # its own Session (is_subagent) — don't filter there, that IS its
+                    # conversation.
+                    if not self.is_subagent and obj.get("isSidechain"):
+                        continue
+
                     msg_data = obj.get("message", obj)
                     role = msg_data.get("role", obj.get("type", ""))
+                    ts = obj.get("timestamp")
 
                     if role == "user":
-                        text = self._extract_text(msg_data.get("content", ""))
-                        if text and "<system-reminder>" not in text:
-                            self.messages.append(Message("user", text))
+                        content = msg_data.get("content", "")
+                        # Collect tool_result blocks (tool OUTPUTS): they ride in a
+                        # user message keyed by tool_use_id, to be linked back onto
+                        # the ToolCall that produced them.
+                        if isinstance(content, list):
+                            for block in content:
+                                if isinstance(block, dict) and block.get("type") == "tool_result":
+                                    tid = block.get("tool_use_id")
+                                    if tid:
+                                        tool_results[tid] = self._tool_result_text(block)
+                        text = self._extract_text(content)
+                        if text:
+                            self.messages.append(Message("user", text, timestamp=ts,
+                                                         images=self._collect_images(content)))
+                            # A text-bearing user message starts a new turn. tool_result-only
+                            # user messages (text == "") are mid-turn and do NOT segment.
+                            events.append(("U",))
 
                     elif role == "assistant":
                         content = msg_data.get("content", [])
+                        # Per-turn model: a single session can span >1 model (e.g. a
+                        # mid-session model swap), so each assistant turn carries its
+                        # OWN model. self.model stays = the first one (session headline).
+                        msg_model = msg_data.get("model", None)
                         if not self.model:
-                            self.model = msg_data.get("model", None)
+                            self.model = msg_model
 
                         text_parts = []
                         tool_calls = []
                         thinking = ""
+                        has_thinking = False
+                        think_idx = None   # content-index of first thinking block (within-event order)
+                        tool_idx = None    # content-index of first tool_use block
+                        thinking_len = 0
 
                         if isinstance(content, str):
                             text_parts.append(content)
                         elif isinstance(content, list):
-                            for block in content:
+                            for i, block in enumerate(content):
                                 if not isinstance(block, dict):
                                     continue
                                 btype = block.get("type", "")
                                 if btype == "text":
                                     text_parts.append(block.get("text", ""))
                                 elif btype == "tool_use":
-                                    tc = ToolCall(
+                                    tool_calls.append(ToolCall(
                                         block.get("name", "unknown"),
-                                        block.get("input", {})
-                                    )
-                                    tool_calls.append(tc)
-                                elif btype == "thinking":
-                                    thinking = block.get("thinking", "")
+                                        block.get("input", {}),
+                                        id=block.get("id")
+                                    ))
+                                    if tool_idx is None:
+                                        tool_idx = i
+                                elif btype in ("thinking", "redacted_thinking"):
+                                    has_thinking = True
+                                    if think_idx is None:
+                                        think_idx = i
+                                    tcontent = block.get("thinking", "")
+                                    if tcontent:
+                                        thinking = tcontent
+                                        thinking_len += len(tcontent)
 
                         text = "\n".join(text_parts).strip()
+                        # Record EVERY assistant event (incl. thinking-ONLY events, which are
+                        # NOT added to self.messages but ARE load-bearing for the turn-level
+                        # reasoning% and think-before-action metrics — the point of this pass).
+                        events.append(("A", msg_model or self.model, has_thinking,
+                                       think_idx, tool_idx,
+                                       [tc.name for tc in tool_calls],
+                                       len(text), thinking_len))
                         if text or tool_calls:
-                            m = Message("assistant", text, tool_calls, thinking, model=self.model)
+                            m = Message("assistant", text, tool_calls, thinking,
+                                        timestamp=ts, model=msg_model or self.model,
+                                        has_thinking=has_thinking,
+                                        images=self._collect_images(content))
                             self.messages.append(m)
 
+            # Tool-result linking: attach each tool's OUTPUT back onto its call by
+            # id. (The biggest export omission — exports showed tool inputs but
+            # never outputs, so a reader saw what was asked, never what came back.)
+            if tool_results:
+                for m in self.messages:
+                    for tc in m.tool_calls:
+                        if tc.id and tc.result is None:
+                            tc.result = tool_results.get(tc.id)
+
+            self.turns = _build_turns(events)
         except (IOError, OSError):
             pass
+
+    # <system-reminder> blocks are stripped PER SPAN, not per message: Claude Code
+    # appends reminder blocks (hook context, file-change notices, CLAUDE.md loads)
+    # to the SAME content array as the real prompt. The old whole-message drop
+    # deleted real prompts from export/search/extract AND swallowed the turn
+    # boundary, merging adjacent assistant turns (skewing every profile metric).
+    # A message that was ONLY reminders still comes back empty and is skipped.
+    _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+
+    @staticmethod
+    def _image_marker(item):
+        """Human-readable stand-in for an image block in TEXT output.
+
+        Was "[image]" (tool results) or nothing at all (user messages). Both lost the
+        one thing a reader needs: that an image was there, and roughly what. A marker
+        also keeps the message NON-EMPTY, which matters more than it looks -- the
+        parser skips user messages with empty text, so an image-ONLY paste used to
+        disappear from export/search/extract completely.
+        """
+        src = item.get("source") or {}
+        media = src.get("media_type") or ""
+        data = src.get("data") or ""
+        if data and media:
+            kb = (len(data) * 3 // 4) // 1024
+            return "[image: " + str(media) + ", ~" + str(kb) + " KB]"
+        if media:
+            return "[image: " + str(media) + "]"
+        # Nothing known about it -> the original bare marker. Keeping the old string
+        # for the degenerate case means existing callers/tests that only ever saw
+        # "[image]" are untouched; the richer form appears only when there is
+        # actually something richer to say.
+        return "[image]"
+
+    @staticmethod
+    def _collect_images(content):
+        """Inline base64 image blocks from a content list, in order.
+
+        Only source.type == "base64" is collected: a URL-source block carries no bytes
+        here and must not be faked into one.
+        """
+        out = []
+        if not isinstance(content, list):
+            return out
+        for item in content:
+            if not isinstance(item, dict) or item.get("type") != "image":
+                continue
+            src = item.get("source") or {}
+            if src.get("type") == "base64" and src.get("data"):
+                out.append({"media_type": src.get("media_type") or "image/png",
+                            "data": src["data"]})
+        return out
+
+    def _tool_result_text(self, block):
+        """Extract displayable text from a tool_result block's content (str or
+        list of text/image blocks). Images collapse to a '[image]' marker."""
+        c = block.get("content", "")
+        if isinstance(c, str):
+            return c.strip()
+        if isinstance(c, list):
+            parts = []
+            for item in c:
+                if isinstance(item, dict):
+                    if item.get("type") == "text":
+                        parts.append(item.get("text", ""))
+                    elif item.get("type") == "image":
+                        parts.append(self._image_marker(item))
+                elif isinstance(item, str):
+                    parts.append(item)
+            return "\n".join(parts).strip()
+        return ""
 
     def _extract_text(self, content):
         """Extract text from user message content (string or list)."""
         if isinstance(content, str):
-            return content.strip()
+            return self._REMINDER_RE.sub("", content).strip()
         if isinstance(content, list):
             parts = []
             for c in content:
                 if isinstance(c, dict):
                     if c.get("type") == "text":
-                        t = c.get("text", "")
+                        t = self._REMINDER_RE.sub("", c.get("text", ""))
                         if '"tool_result"' not in t[:50] and t.strip()[:15] != "Launching skill":
-                            parts.append(t)
+                            if t.strip():
+                                parts.append(t)
+                    elif c.get("type") == "image":
+                        # Previously dropped SILENTLY -- worse than the tool-result
+                        # path, which at least printed a marker. An image-only user
+                        # message then had empty text and the parser skipped it, so
+                        # the whole turn vanished from export/search/extract.
+                        parts.append(self._image_marker(c))
             return "\n".join(parts).strip()
         return ""
+
+    def raw_may_contain(self, needle_lower):
+        """Cheap prefilter: can this file contain the (plain, lowercased) needle at all?
+
+        Reads raw bytes as text, no JSON parse — lets `search` skip full parsing for
+        the ~95% of files that can't match. Callers must only use this for queries
+        that survive JSON encoding verbatim (ASCII, no quote/backslash/control chars);
+        on error we return True (never skip a file we couldn't check)."""
+        try:
+            with open(self.path, "r", encoding="utf-8", errors="replace") as f:
+                return needle_lower in f.read().lower()
+        except OSError:
+            return True
 
     def summary(self, max_len=100):
         """Get a one-line summary (first meaningful user message). Fast: reads first ~50 lines only."""
@@ -386,6 +640,30 @@ class Session:
         except (IOError, OSError):
             pass
         return count
+
+    def turn_models(self):
+        """Counter of per-turn models across assistant messages.
+
+        A session can be multi-model (e.g. a mid-session model swap), so this
+        counts every assistant turn's own model — unlike `self.model`, which is
+        just the first (headline) model seen.
+        """
+        from collections import Counter
+        self.parse()
+        c = Counter()
+        for m in self.messages:
+            if m.role == "assistant" and m.model:
+                c[m.model] += 1
+        return c
+
+    def is_mixed(self):
+        """True if the session has assistant turns from more than one model."""
+        return len(self.turn_models()) > 1
+
+    def has_model(self, needle):
+        """True if any per-turn model name contains `needle` (case-insensitive substring)."""
+        nl = needle.lower()
+        return any(nl in mdl.lower() for mdl in self.turn_models())
 
 
 # ─── Smart Headlines (heuristic, no AI) ──────────────────────────────────────
@@ -576,7 +854,11 @@ def _h_subagent_headline(session):
     msg = next((m.text for m in session.messages if m.role == "user" and len(m.text) > 5), "")
     if not msg:
         return None
-    one = re.sub(r"\s+", " ", msg).strip()
+    # Strip tag-blocks/lone-tags first (not just whitespace) so a leading
+    # <system-reminder>/command block can't get front-loaded as the headline.
+    one = _h_strip_noise(msg)
+    if not one:
+        return None
     pm = _H_PATH.search(one)
     if not pm:
         return None  # no path to front-load; let the normal cascade handle it
@@ -921,12 +1203,14 @@ class Exporter:
 
     extension = ""  # override in subclasses
 
-    def __init__(self, session, *, no_truncate=False, embedded=False, rich=False, diagrams=False):
+    def __init__(self, session, *, no_truncate=False, embedded=False, rich=False,
+                 diagrams=False, thinking=False):
         self.session = session
         self.no_truncate = no_truncate
         self.embedded = embedded
         self.rich = rich
         self.diagrams = diagrams
+        self.thinking = thinking  # render assistant reasoning blocks (off by default)
 
     def format(self):
         """Return the formatted session string. Subclasses must override."""
@@ -967,6 +1251,9 @@ class MarkdownExporter(Exporter):
                 lines.append("")
             elif m.role == "assistant":
                 lines.append(f"## Claude\n")
+                if self.thinking and m.thinking:
+                    think = m.thinking if self.no_truncate else m.thinking[:2000]
+                    lines.append(f"<details><summary>Thinking</summary>\n\n```\n{think}\n```\n</details>\n")
                 if m.text:
                     lines.append(m.text)
                 for tc in m.tool_calls:
@@ -975,6 +1262,9 @@ class MarkdownExporter(Exporter):
                         input_str = input_str[:500]
                     lines.append(f"\n<details><summary>Tool: {tc.summary()}</summary>\n")
                     lines.append(f"```json\n{input_str}\n```")
+                    if tc.result:
+                        res = tc.result if self.no_truncate else tc.result[:1000]
+                        lines.append(f"\n**Result:**\n```\n{res}\n```")
                     lines.append(f"</details>\n")
                 lines.append("")
 
@@ -1267,16 +1557,46 @@ class HTMLExporter(Exporter):
                     input_preview = json.dumps(tc.input_data, indent=2)
                     if not no_truncate:
                         input_preview = input_preview[:400]
+                    result_html = ""
+                    if tc.result:
+                        res = tc.result if no_truncate else tc.result[:1000]
+                        result_html = (f"<div class=\"tool-result-label\">Result:</div>"
+                                       f"<pre>{html_mod.escape(res)}</pre>")
                     tools_html += f"""
                 <details class="tool-call">
                     <summary>{html_mod.escape(tc.summary())}</summary>
-                    <pre>{html_mod.escape(input_preview)}</pre>
+                    <pre>{html_mod.escape(input_preview)}</pre>{result_html}
                 </details>"""
 
+            # Thinking (reasoning) block — off by default, collapsible
+            thinking_html = ""
+            if self.thinking and m.role == "assistant" and m.thinking:
+                th = m.thinking if no_truncate else m.thinking[:2000]
+                thinking_html = (f'<details class="tool-call"><summary>Thinking</summary>'
+                                 f'<pre>{html_mod.escape(th)}</pre></details>')
+            # Images: the transcript carries the FULL bytes inline (source.type
+            # == "base64"), so the renderer can show the actual image instead of a
+            # marker -- no cache lookup, no external file, nothing to go stale. This
+            # is the whole reason the parser now keeps them: claude-chat was
+            # discarding ~600 KB of real image per block to print five characters.
+            images_html = ""
+            if getattr(m, "images", None):
+                for img in m.images:
+                    media = html_mod.escape(str(img.get("media_type") or "image/png"))
+                    data = img.get("data") or ""
+                    if not data:
+                        continue
+                    images_html += (
+                        f'<div class="msg-image">'
+                        f'<img src="data:{media};base64,{data}" '
+                        f'alt="pasted image ({media})" loading="lazy" '
+                        f'style="max-width:100%;height:auto;border-radius:6px;'
+                        f'border:1px solid rgba(128,128,128,.35);margin:.5rem 0">'
+                        f'</div>')
             messages_html.append(f"""
         <div class="message {role_class}">
             <div class="role-label">{role_label}</div>
-            <div class="content">{text}{tools_html}</div>
+            <div class="content">{thinking_html}{text}{images_html}{tools_html}</div>
         </div>""")
 
         nav = ""
@@ -1455,9 +1775,9 @@ EXPORTER_REGISTRY = {
 # downstream callers that import these names directly. Each is a thin wrapper
 # over the corresponding Exporter or HTMLExporter static method.
 
-def export_markdown(session, no_truncate=False):
+def export_markdown(session, no_truncate=False, thinking=False):
     """Export session as Markdown. Thin wrapper over MarkdownExporter."""
-    return MarkdownExporter(session, no_truncate=no_truncate).format()
+    return MarkdownExporter(session, no_truncate=no_truncate, thinking=thinking).format()
 
 
 def export_txt(session):
@@ -1470,7 +1790,7 @@ def export_tex(session):
     return TeXExporter(session).format()
 
 
-def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate=False):
+def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate=False, thinking=False):
     """Export session as HTML. Thin wrapper over HTMLExporter."""
     return HTMLExporter(
         session,
@@ -1478,6 +1798,7 @@ def export_html(session, embedded=False, rich=False, diagrams=False, no_truncate
         rich=rich,
         diagrams=diagrams,
         no_truncate=no_truncate,
+        thinking=thinking,
     ).format()
 
 
@@ -1495,6 +1816,172 @@ def _auto_link_urls(text):
 
 def _build_sequence_diagram(session):
     return HTMLExporter._build_sequence_diagram(session)
+
+
+# ─── Behavioral profiling ─────────────────────────────────────────────────────
+#
+# A per-model "how it works" fingerprint over Turns (one user prompt + the
+# assistant's full multi-event response): reasoning presence, think-before-action,
+# first-tool distribution, tool intensity, narration length. Powers `profile` and
+# `compare`. Operates on Turn objects (Session.turns), NOT raw events — so
+# "how it opens a task" and "does it think before acting" are measured per
+# response, with thinking-only events preserved by the parser.
+
+def behavioral_profile(turns):
+    """Compute behavioral metrics over a list of Turn objects (already model-filtered)."""
+    from collections import Counter
+    n = len(turns)
+    reasoning = sum(1 for t in turns if t.has_reasoning)
+    tool_turns = [t for t in turns if t.first_tool is not None]
+    nt = len(tool_turns)
+    tba = sum(1 for t in tool_turns if t.think_before_action)
+    return {
+        "turns": n,
+        "reasoning_pct": (100.0 * reasoning / n) if n else 0.0,
+        "tool_turns": nt,
+        "think_before_action_pct": (100.0 * tba / nt) if nt else 0.0,
+        "tool_calls_per_turn": (sum(t.n_tools for t in turns) / n) if n else 0.0,
+        "avg_text_chars": (sum(t.narration_chars for t in turns) / n) if n else 0.0,
+        "avg_think_chars": (sum(t.thinking_chars for t in turns) / n) if n else 0.0,
+        "first_tools": Counter(t.first_tool for t in tool_turns),
+    }
+
+
+def collect_turns(sessions, model_filter=None):
+    """Return dict model -> list[Turn] across sessions.
+
+    A turn's model is its first assistant event's model. model_filter
+    (case-insensitive substring) restricts which models are kept.
+    """
+    from collections import defaultdict
+    nl = model_filter.lower() if model_filter else None
+    groups = defaultdict(list)
+    for s in sessions:
+        s.parse()
+        for t in s.turns:
+            if not t.model:
+                continue
+            if nl and nl not in t.model.lower():
+                continue
+            groups[t.model].append(t)
+    return groups
+
+
+def collect_assistant_messages(sessions, model_filter=None):
+    """Return dict model -> list[Message] of assistant turns across sessions.
+
+    model_filter (case-insensitive substring) restricts which models are kept.
+    Retained for callers that want per-message (not per-turn) granularity.
+    """
+    from collections import defaultdict
+    nl = model_filter.lower() if model_filter else None
+    groups = defaultdict(list)
+    for s in sessions:
+        s.parse()
+        for m in s.messages:
+            if m.role != "assistant" or not m.model:
+                continue
+            if nl and nl not in m.model.lower():
+                continue
+            groups[m.model].append(m)
+    return groups
+
+
+def format_profile(label, p):
+    """Render one behavioral_profile() dict as an indented block."""
+    tools = ", ".join(f"{n}:{c}" for n, c in p["first_tools"].most_common(5)) or "(none)"
+    return "\n".join([
+        f"  {label}",
+        f"    turns (responses):    {p['turns']}",
+        f"    reasoning present:    {p['reasoning_pct']:.0f}%",
+        f"    think before action:  {p['think_before_action_pct']:.0f}%  (of {p['tool_turns']} tool-turns)",
+        f"    tool calls/turn:      {p['tool_calls_per_turn']:.2f}",
+        f"    avg narration chars:  {p['avg_text_chars']:.0f}",
+        f"    avg thinking chars:   {p['avg_think_chars']:.0f}  (0 = encrypted/absent in transcript)",
+        f"    top first-tools:      {tools}",
+    ])
+
+
+def profile_line(label, p):
+    """One-line profile summary for the per-session (replication) view.
+
+    Flags small samples (n<5) — the n=1 case that's statistically useless and had
+    to be called out by hand in the manual replication table.
+    """
+    ft = p["first_tools"].most_common(1)
+    top = f"{ft[0][0]} {100 * ft[0][1] / p['tool_turns']:.0f}%" if (ft and p["tool_turns"]) else "-"
+    warn = " !n<5" if p["turns"] < 5 else ""
+    return (f"  {label:<20} turns={p['turns']:>3}{warn:<5} reason={p['reasoning_pct']:>3.0f}% "
+            f"tba={p['think_before_action_pct']:>3.0f}% tools/turn={p['tool_calls_per_turn']:>4.2f} "
+            f"narr={p['avg_text_chars']:>4.0f} 1st-tool={top}")
+
+
+def profile_to_dict(p):
+    """JSON-safe version of a behavioral_profile() dict (Counter -> dict)."""
+    d = {k: v for k, v in p.items() if k != "first_tools"}
+    d["first_tools"] = dict(p["first_tools"])
+    return d
+
+
+def per_session_profiles(sessions, model_filter=None):
+    """Per-session replication data: list of (session, {model: profile}) for each
+    session that has matching turns. This is the view that exposes confounds —
+    a metric that holds across rows is robust; one that swings is task-driven.
+    """
+    out = []
+    nl = model_filter.lower() if model_filter else None
+    for s in sessions:
+        s.parse()
+        groups = {}
+        for t in s.turns:
+            if not t.model:
+                continue
+            if nl and nl not in t.model.lower():
+                continue
+            groups.setdefault(t.model, []).append(t)
+        if groups:
+            out.append((s, {m: behavioral_profile(ts) for m, ts in groups.items()}))
+    return out
+
+
+def tool_histogram(sessions, model_filter=None):
+    """dict model -> Counter of ALL tool-call names (full usage distribution).
+
+    Computed from messages (not Turns), since Turn keeps only the first tool.
+    """
+    from collections import defaultdict, Counter
+    nl = model_filter.lower() if model_filter else None
+    hist = defaultdict(Counter)
+    for s in sessions:
+        s.parse()
+        for m in s.messages:
+            if m.role != "assistant" or not m.model:
+                continue
+            if nl and nl not in m.model.lower():
+                continue
+            for tc in m.tool_calls:
+                hist[m.model][tc.name] += 1
+    return hist
+
+
+def activity_by_day(sessions, model_filter=None):
+    """dict 'YYYY-MM-DD' -> {sessions, turns, models:Counter} — usage over time."""
+    from collections import defaultdict, Counter
+    nl = model_filter.lower() if model_filter else None
+    by_day = {}
+    for s in sessions:
+        s.parse()
+        day = s.modified.strftime("%Y-%m-%d")
+        d = by_day.setdefault(day, {"sessions": 0, "turns": 0, "models": Counter()})
+        d["sessions"] += 1
+        for t in s.turns:
+            if not t.model:
+                continue
+            if nl and nl not in t.model.lower():
+                continue
+            d["turns"] += 1
+            d["models"][t.model] += 1
+    return by_day
 
 
 # ─── Commands ────────────────────────────────────────────────────────────────
@@ -1529,13 +2016,22 @@ class ListCommand(Command):
     def execute(self):
         args = self.args
         sessions = find_all_sessions(args.project)
-        if getattr(args, "json", False):
+        if getattr(args, "format", "text") == "json":
             return self._emit_json(sessions)
         if not sessions:
             print("No sessions found.")
             return
 
-        limit = args.limit or 20
+        # --model: keep only sessions with assistant turns from a matching model.
+        # Opt-in, so the default fast path (no full parse) is unchanged.
+        model_filter = getattr(args, "model", None)
+        if model_filter:
+            sessions = [s for s in sessions if s.has_model(model_filter)]
+            if not sessions:
+                print(f'No sessions with a model matching "{model_filter}".')
+                return
+
+        limit = 20 if args.limit is None else args.limit  # `--limit 0` must mean 0, not 20
         detail = getattr(args, "detail", False)
         interactive = getattr(args, "_interactive", False)
         current_project = None
@@ -1662,9 +2158,23 @@ class SearchCommand(Command):
         if before_dt:
             sessions = [s for s in sessions if s.modified <= before_dt]
 
+        # --model: restrict to sessions containing turns from a matching model
+        # (session-level scope; the snippet itself isn't model-tagged yet).
+        model_filter = getattr(args, "model", None)
+        if model_filter:
+            sessions = [s for s in sessions if s.has_model(model_filter)]
+
+        # Raw-substring prefilter: only safe when the query survives JSON encoding
+        # verbatim (non-ASCII may be \uXXXX-escaped in the file; quotes/backslashes
+        # are escaped) — otherwise we'd get false negatives. scan() lowercases the
+        # same way, so a passing prefilter can never lose a real match.
+        prefilterable = (scanner.query.isascii()
+                         and not any(ch in scanner.query for ch in '"\\\n\r\t'))
         results = []
         for s in sessions:
             try:
+                if prefilterable and not s.raw_may_contain(scanner.query):
+                    continue
                 s.parse()
                 count, contexts = scanner.scan(s)
                 if count > 0:
@@ -1682,6 +2192,8 @@ class SearchCommand(Command):
                     if args.project.lower() in s.project.lower():
                         continue  # already searched
                     try:
+                        if prefilterable and not s.raw_may_contain(scanner.query):
+                            continue
                         s.parse()
                         c, _ = scanner.scan(s)
                         if c > 0:
@@ -1705,7 +2217,8 @@ class SearchCommand(Command):
         # When scoped to one session, show all matches; otherwise summarize per-session.
         preview_limit = 50 if in_session_id else 3
 
-        for s, count, contexts in results[:args.limit or 20]:
+        shown_limit = 20 if args.limit is None else args.limit
+        for s, count, contexts in results[:shown_limit]:
             if not in_session_id:
                 print(f"  {s.short_id}  {s.modified.strftime('%Y-%m-%d %H:%M')}  {count} matches  [{s.project}]")
             for role, snippet in contexts[:preview_limit]:
@@ -1722,6 +2235,9 @@ class SearchCommand(Command):
             if len(contexts) > preview_limit:
                 print(f"    ... and {len(contexts) - preview_limit} more matches")
             print()
+
+        if len(results) > shown_limit:
+            print(f"  ... and {len(results) - shown_limit} more session(s) — raise --limit to see them\n")
 
         print("Tip: `export <id> --format md` for human-reading (tool inputs truncated at 500 chars).")
         print("     `export <id> --format md --no-truncate` for byte-perfect file/edit recovery.")
@@ -1756,6 +2272,7 @@ class ExportCommand(Command):
             no_truncate=no_truncate,
             rich=getattr(args, "rich", False),
             diagrams=getattr(args, "diagrams", False),
+            thinking=getattr(args, "thinking", False),
         )
         content = exporter.format()
         ext = exporter_cls.extension
@@ -1768,6 +2285,7 @@ class ExportCommand(Command):
             return
 
         filename = f"claude-chat_{session.short_id}_{session.modified.strftime('%Y%m%d')}{ext}"
+        out_dir.mkdir(parents=True, exist_ok=True)  # --output <newdir> used to die with a raw traceback
         out_path = out_dir / filename
 
         with open(out_path, "w", encoding="utf-8") as f:
@@ -1878,6 +2396,13 @@ class StatsCommand(Command):
             print("No sessions found.")
             return
 
+        model_filter = getattr(args, "model", None)
+        if model_filter:
+            sessions = [s for s in sessions if s.has_model(model_filter)]
+            if not sessions:
+                print(f'No sessions with a model matching "{model_filter}".')
+                return
+
         total_size = sum(s.size for s in sessions)
         projects = set(s.project for s in sessions)
 
@@ -1886,7 +2411,8 @@ class StatsCommand(Command):
         total_asst_msgs = 0
         total_tool_calls = 0
         total_code_blocks = 0
-        models_used = {}
+        models_turns = {}     # per-TURN model counts (a session can be multi-model)
+        mixed_sessions = 0
         oldest = min(s.modified for s in sessions)
         newest = max(s.modified for s in sessions)
 
@@ -1899,9 +2425,11 @@ class StatsCommand(Command):
                 elif m.role == "assistant":
                     total_asst_msgs += 1
                     total_tool_calls += len(m.tool_calls)
+                    if m.model:
+                        models_turns[m.model] = models_turns.get(m.model, 0) + 1
             total_code_blocks += len(s.code_blocks())
-            if s.model:
-                models_used[s.model] = models_used.get(s.model, 0) + 1
+            if s.is_mixed():
+                mixed_sessions += 1
 
         days_span = max(1, (newest - oldest).days)
 
@@ -1921,10 +2449,11 @@ class StatsCommand(Command):
         print(f"  Msgs/day:        {(total_user_msgs + total_asst_msgs) / days_span:.1f}")
         print(f"  Sessions/day:    {len(sessions) / days_span:.1f}")
 
-        if models_used:
-            print(f"\n  Models:")
-            for model, count in sorted(models_used.items(), key=lambda x: -x[1]):
-                print(f"    {model}: {count} session(s)")
+        if models_turns:
+            print(f"\n  Models (by turn):")
+            for model, count in sorted(models_turns.items(), key=lambda x: -x[1]):
+                print(f"    {model}: {count} turn(s)")
+            print(f"    (mixed-model sessions: {mixed_sessions})")
 
         # Top sessions by size
         print(f"\n  Largest sessions:")
@@ -1957,14 +2486,33 @@ class ExtractCommand(Command):
         no_truncate = getattr(args, "no_truncate", False)
         limit = getattr(args, "limit", None)
 
-        if args.code:
+        if getattr(args, "turns", False):
+            self._extract_turns(session)
+        elif args.code:
             self._extract_code(session)
         elif args.ideas:
             self._extract_ideas(session, no_truncate=no_truncate, limit=limit)
         elif args.decisions:
             self._extract_decisions(session, no_truncate=no_truncate, limit=limit)
         else:
-            print("Specify what to extract: --code, --ideas, or --decisions")
+            print("Specify what to extract: --turns, --code, --ideas, or --decisions")
+
+    @staticmethod
+    def _extract_turns(session):
+        """Emit one compact JSON object per turn (ts, role, model, tools, text).
+
+        Pipe-friendly and low-bloat — the per-turn substrate for downstream
+        analysis/priming, without ramming raw JSONL (with all its metadata) into
+        context. Mirrors the strip-to-essentials move.
+        """
+        for m in session.messages:
+            rec = {"ts": m.timestamp, "role": m.role}
+            if m.role == "assistant":
+                rec["model"] = m.model
+                if m.tool_calls:
+                    rec["tools"] = [tc.name for tc in m.tool_calls]
+            rec["text"] = m.text
+            print(json.dumps(rec, ensure_ascii=False))
 
     @staticmethod
     def _extract_code(session):
@@ -2029,6 +2577,208 @@ class ExtractCommand(Command):
             print("  No explicit decisions found.")
 
 
+class ProfileCommand(Command):
+    """Behavioral fingerprint of each model across sessions (how it works, not what)."""
+
+    name = "profile"
+    aliases = ()
+
+    def execute(self):
+        args = self.args
+        in_session_id = getattr(args, "in_session", None)
+        if in_session_id:
+            s = find_session(in_session_id)
+            if not s:
+                print(f"Session not found: {in_session_id}")
+                return
+            sessions = [s]
+        else:
+            sessions = find_all_sessions(args.project)
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        model_filter = getattr(args, "model", None)
+        fmt = getattr(args, "format", "text")
+        min_turns = getattr(args, "min_turns", 0) or 0
+
+        # --by-session: one row-group per session (the replication / confound view).
+        if getattr(args, "by_session", False):
+            rows = per_session_profiles(sessions, model_filter)
+            # --min-turns drops sub-threshold rows (e.g. 1-turn subagent transcripts).
+            rows = [(s, {m: p for m, p in d.items() if p["turns"] >= min_turns}) for s, d in rows]
+            rows = [(s, d) for s, d in rows if d]
+            if not rows:
+                print("No assistant turns matched.")
+                return
+            if fmt == "json":
+                print(json.dumps([
+                    {"session": s.short_id, "project": s.project,
+                     "date": s.modified.strftime("%Y-%m-%d"),
+                     "models": {m: profile_to_dict(p) for m, p in d.items()}}
+                    for s, d in rows], indent=2))
+                return
+            print(f"Per-session profile ({len(rows)} session(s)) — read down a metric for replication:\n")
+            for s, d in rows:
+                print(f"{s.short_id}  {s.modified.strftime('%Y-%m-%d')}  [{s.project[:34]}]")
+                for m in sorted(d, key=lambda k: -d[k]['turns']):
+                    print(profile_line(m, d[m]))
+                print()
+            return
+
+        groups = collect_turns(sessions, model_filter)
+        if not groups:
+            print("No assistant turns matched.")
+            return
+        if fmt == "json":
+            print(json.dumps({m: profile_to_dict(behavioral_profile(ts)) for m, ts in groups.items()}, indent=2))
+            return
+
+        show_tools = getattr(args, "tools", False)
+        hist = tool_histogram(sessions, model_filter) if show_tools else {}
+        scope = f"session {sessions[0].short_id}" if in_session_id else f"{len(sessions)} session(s)"
+        print(f"Behavioral profile over {scope}:\n")
+        for model in sorted(groups, key=lambda k: -len(groups[k])):
+            print(format_profile(model, behavioral_profile(groups[model])))
+            if show_tools and hist.get(model):
+                total = sum(hist[model].values())
+                print("    tool histogram:")
+                for name, c in hist[model].most_common():
+                    print(f"      {name:<16} {c:>5}  {100 * c / total:>3.0f}%")
+            print()
+
+
+class CompareCommand(Command):
+    """Compare the behavioral profiles of two models, side by side (delta table)."""
+
+    name = "compare"
+    aliases = ("diff",)
+
+    def execute(self):
+        args = self.args
+        in_session_id = getattr(args, "in_session", None)
+        if in_session_id:
+            s = find_session(in_session_id)
+            if not s:
+                print(f"Session not found: {in_session_id}")
+                return
+            sessions = [s]
+        else:
+            sessions = find_all_sessions(args.project)
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        A, B = args.model_a, args.model_b
+        fmt = getattr(args, "format", "text")
+        min_turns = getattr(args, "min_turns", 0) or 0
+
+        # --by-session: A vs B per session (the replication view — was hand-built before).
+        if getattr(args, "by_session", False):
+            rows = []
+            for s in sessions:
+                s.parse()
+                a = [t for t in s.turns if t.model and A.lower() in t.model.lower()]
+                b = [t for t in s.turns if t.model and B.lower() in t.model.lower()]
+                pa = behavioral_profile(a) if a else None
+                pb = behavioral_profile(b) if b else None
+                if pa and pa["turns"] < min_turns:  # drop sub-threshold (e.g. subagent) rows
+                    pa = None
+                if pb and pb["turns"] < min_turns:
+                    pb = None
+                if pa or pb:
+                    rows.append((s, pa, pb))
+            if not rows:
+                print(f'No turns matched "{A}" or "{B}".')
+                return
+            if fmt == "json":
+                print(json.dumps([
+                    {"session": s.short_id, "date": s.modified.strftime("%Y-%m-%d"),
+                     A: profile_to_dict(pa) if pa else None,
+                     B: profile_to_dict(pb) if pb else None}
+                    for s, pa, pb in rows], indent=2))
+                return
+            print(f'Per-session compare "{A}" vs "{B}" ({len(rows)} session(s)) — read down for replication:\n')
+            for s, pa, pb in rows:
+                print(f"{s.short_id}  {s.modified.strftime('%Y-%m-%d')}  [{s.project[:34]}]")
+                if pa:
+                    print(profile_line(A, pa))
+                if pb:
+                    print(profile_line(B, pb))
+                print()
+            return
+
+        a_flat = [t for ts in collect_turns(sessions, A).values() for t in ts]
+        b_flat = [t for ts in collect_turns(sessions, B).values() for t in ts]
+        if not a_flat:
+            print(f'No turns matched model "{A}".')
+            return
+        if not b_flat:
+            print(f'No turns matched model "{B}".')
+            return
+
+        pa, pb = behavioral_profile(a_flat), behavioral_profile(b_flat)
+        if fmt == "json":
+            print(json.dumps({A: profile_to_dict(pa), B: profile_to_dict(pb)}, indent=2))
+            return
+        scope = f"session {sessions[0].short_id}" if in_session_id else f"{len(sessions)} session(s)"
+        print(f'Compare "{A}" vs "{B}" over {scope}:\n')
+
+        rows = [
+            ("turns (responses)", str(pa["turns"]), str(pb["turns"])),
+            ("reasoning present %", f"{pa['reasoning_pct']:.0f}%", f"{pb['reasoning_pct']:.0f}%"),
+            ("think before action %", f"{pa['think_before_action_pct']:.0f}%", f"{pb['think_before_action_pct']:.0f}%"),
+            ("tool calls/turn", f"{pa['tool_calls_per_turn']:.2f}", f"{pb['tool_calls_per_turn']:.2f}"),
+            ("avg narration chars", f"{pa['avg_text_chars']:.0f}", f"{pb['avg_text_chars']:.0f}"),
+            ("avg thinking chars", f"{pa['avg_think_chars']:.0f}", f"{pb['avg_think_chars']:.0f}"),
+        ]
+        wlabel = max(len(r[0]) for r in rows)
+        ca, cb = args.model_a[:18], args.model_b[:18]
+        print(f"  {'metric'.ljust(wlabel)}   {ca.rjust(18)}   {cb.rjust(18)}")
+        for name, a, b in rows:
+            print(f"  {name.ljust(wlabel)}   {a.rjust(18)}   {b.rjust(18)}")
+
+        print(f"\n  first-tool mix (A | B, % of that model's tool-turns):")
+        for t in sorted(set(pa["first_tools"]) | set(pb["first_tools"])):
+            ta = 100.0 * pa["first_tools"].get(t, 0) / pa["tool_turns"] if pa["tool_turns"] else 0
+            tb = 100.0 * pb["first_tools"].get(t, 0) / pb["tool_turns"] if pb["tool_turns"] else 0
+            print(f"    {t.ljust(12)} {ta:5.0f}% | {tb:5.0f}%")
+
+
+class ActivityCommand(Command):
+    """Sessions + turns per day (optionally per model) — usage over time."""
+
+    name = "activity"
+    aliases = ("timeline",)
+
+    def execute(self):
+        args = self.args
+        model_filter = getattr(args, "model", None)
+        sessions = find_all_sessions(args.project)
+        if model_filter:
+            sessions = [s for s in sessions if s.has_model(model_filter)]
+        if not sessions:
+            print("No sessions found.")
+            return
+
+        by_day = activity_by_day(sessions, model_filter)
+        days = sorted(by_day)
+        fmt = getattr(args, "format", "text")
+        if fmt == "json":
+            print(json.dumps({d: {"sessions": v["sessions"], "turns": v["turns"],
+                                  "models": dict(v["models"])} for d, v in sorted(by_day.items())},
+                             indent=2))
+            return
+
+        by_model = getattr(args, "by_model", False)
+        print(f"Activity over {len(days)} day(s):\n")
+        print(f"  {'date':<12}{'sessions':>9}{'turns':>8}   {'models' if by_model else ''}")
+        for d in days:
+            v = by_day[d]
+            models = ("  " + ", ".join(f"{m}:{c}" for m, c in v["models"].most_common(4))) if by_model else ""
+            print(f"  {d:<12}{v['sessions']:>9}{v['turns']:>8}{models}")
+
+
 class ServeCommand(Command):
     """Start a local web server to browse conversations."""
 
@@ -2056,6 +2806,12 @@ class ServeCommand(Command):
                     self._serve_session(session_id)
                 elif path == "/search":
                     self._serve_search(query)
+                elif path == "/profile":
+                    self._serve_profile(query)
+                elif path == "/compare":
+                    self._serve_compare(query)
+                elif path == "/activity":
+                    self._serve_activity(query)
                 else:
                     self.send_error(404)
 
@@ -2065,9 +2821,134 @@ class ServeCommand(Command):
                 self.end_headers()
                 self.wfile.write(html_content.encode("utf-8"))
 
+            def _send_json(self, obj):
+                # ?format=json on any analytics page = report export (pipe/download).
+                body = json.dumps(obj, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(body)
+
+            @staticmethod
+            def _analytics_page(title, body_html):
+                nav = ('<a href="/">home</a> &middot; <a href="/profile">profile</a> &middot; '
+                       '<a href="/compare?a=fable&b=opus">compare</a> &middot; '
+                       '<a href="/activity?by_model=1">activity</a>')
+                return (
+                    f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title><style>'
+                    'body{background:#1a1b26;color:#c0caf5;font-family:-apple-system,Segoe UI,monospace;padding:20px;}'
+                    'a{color:#7aa2f7;text-decoration:none;}a:hover{text-decoration:underline;}'
+                    'h1{color:#7aa2f7;font-size:1.2em;}.nav{margin-bottom:16px;color:#565f89;}'
+                    'table{border-collapse:collapse;margin:10px 0;}'
+                    'th,td{border:1px solid #3b4261;padding:5px 10px;text-align:left;font-size:0.9em;}'
+                    'th{color:#7aa2f7;background:#24283b;}.ex{color:#565f89;font-size:0.8em;margin-top:12px;}'
+                    'form{margin-bottom:12px;}input{background:#24283b;color:#c0caf5;border:1px solid #3b4261;'
+                    'padding:4px 8px;border-radius:4px;}button{background:#24283b;color:#7aa2f7;'
+                    'border:1px solid #3b4261;padding:4px 10px;border-radius:4px;cursor:pointer;}'
+                    f'</style></head><body><div class="nav">{nav}</div><h1>{title}</h1>{body_html}'
+                    '<div class="ex">Append <code>?format=json</code> to export the raw report.</div>'
+                    '</body></html>')
+
+            def _serve_profile(self, query):
+                model = query.get("model", [None])[0]
+                fmt = query.get("format", ["html"])[0]
+                by_session = query.get("by_session", ["0"])[0] in ("1", "true", "on", "yes")
+                sessions = find_all_sessions()
+                if by_session:
+                    rows = per_session_profiles(sessions, model)
+                    if fmt == "json":
+                        self._send_json([{"session": s.short_id, "date": s.modified.strftime("%Y-%m-%d"),
+                                          "project": s.project,
+                                          "models": {m: profile_to_dict(p) for m, p in d.items()}}
+                                         for s, d in rows])
+                        return
+                    cells = []
+                    for s, d in rows:
+                        for m, p in sorted(d.items(), key=lambda kv: -kv[1]["turns"]):
+                            cells.append(
+                                f"<tr><td>{s.short_id}</td><td>{s.modified.strftime('%Y-%m-%d')}</td>"
+                                f"<td>{html_mod.escape(m)}</td><td>{p['turns']}</td>"
+                                f"<td>{p['reasoning_pct']:.0f}%</td><td>{p['think_before_action_pct']:.0f}%</td>"
+                                f"<td>{p['tool_calls_per_turn']:.2f}</td><td>{p['avg_text_chars']:.0f}</td></tr>")
+                    body = ('<table><tr><th>session</th><th>date</th><th>model</th><th>turns</th>'
+                            '<th>reason%</th><th>tba%</th><th>tools/turn</th><th>narr</th></tr>'
+                            + "".join(cells) + '</table>')
+                else:
+                    groups = collect_turns(sessions, model)
+                    if fmt == "json":
+                        self._send_json({m: profile_to_dict(behavioral_profile(ts)) for m, ts in groups.items()})
+                        return
+                    cells = []
+                    for m, ts in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+                        p = behavioral_profile(ts)
+                        top = ", ".join(f"{n}:{c}" for n, c in p["first_tools"].most_common(5)) or "-"
+                        cells.append(
+                            f"<tr><td>{html_mod.escape(m)}</td><td>{p['turns']}</td>"
+                            f"<td>{p['reasoning_pct']:.0f}%</td><td>{p['think_before_action_pct']:.0f}%</td>"
+                            f"<td>{p['tool_calls_per_turn']:.2f}</td><td>{p['avg_text_chars']:.0f}</td>"
+                            f"<td>{p['avg_think_chars']:.0f}</td><td>{html_mod.escape(top)}</td></tr>")
+                    body = ('<table><tr><th>model</th><th>turns</th><th>reason%</th><th>tba%</th>'
+                            '<th>tools/turn</th><th>narr</th><th>think-chars</th><th>top first-tools</th></tr>'
+                            + "".join(cells) + '</table>')
+                form = ('<form method="get"><input name="model" placeholder="model substring (e.g. fable)" value="'
+                        + html_mod.escape(model or "") + '"> <label><input type="checkbox" name="by_session" value="1"'
+                        + (' checked' if by_session else '') + '> by-session</label> <button>go</button></form>')
+                self._send_html(self._analytics_page("profile", form + body))
+
+            def _serve_compare(self, query):
+                A = query.get("a", ["fable"])[0]
+                B = query.get("b", ["opus"])[0]
+                fmt = query.get("format", ["html"])[0]
+                sessions = find_all_sessions()
+                a = [t for ts in collect_turns(sessions, A).values() for t in ts]
+                b = [t for ts in collect_turns(sessions, B).values() for t in ts]
+                pa = behavioral_profile(a) if a else None
+                pb = behavioral_profile(b) if b else None
+                if fmt == "json":
+                    self._send_json({A: profile_to_dict(pa) if pa else None,
+                                     B: profile_to_dict(pb) if pb else None})
+                    return
+                fmtmap = {"turns": "{:.0f}", "reasoning_pct": "{:.0f}%", "think_before_action_pct": "{:.0f}%",
+                          "tool_calls_per_turn": "{:.2f}", "avg_text_chars": "{:.0f}", "avg_think_chars": "{:.0f}"}
+                labels = [("turns", "turns"), ("reasoning_pct", "reason%"), ("think_before_action_pct", "tba%"),
+                          ("tool_calls_per_turn", "tools/turn"), ("avg_text_chars", "narr"), ("avg_think_chars", "think-chars")]
+                rows = ""
+                for key, label in labels:
+                    av = fmtmap[key].format(pa[key]) if pa else "&mdash;"
+                    bv = fmtmap[key].format(pb[key]) if pb else "&mdash;"
+                    rows += f"<tr><td>{label}</td><td>{av}</td><td>{bv}</td></tr>"
+                body = (f'<table><tr><th>metric</th><th>{html_mod.escape(A)}</th><th>{html_mod.escape(B)}</th></tr>'
+                        + rows + '</table>')
+                form = ('<form method="get">A <input name="a" value="' + html_mod.escape(A) + '"> '
+                        'B <input name="b" value="' + html_mod.escape(B) + '"> <button>go</button></form>')
+                self._send_html(self._analytics_page("compare", form + body))
+
+            def _serve_activity(self, query):
+                model = query.get("model", [None])[0]
+                fmt = query.get("format", ["html"])[0]
+                by_model = query.get("by_model", ["0"])[0] in ("1", "true", "on", "yes")
+                sessions = find_all_sessions()
+                if model:
+                    sessions = [s for s in sessions if s.has_model(model)]
+                by_day = activity_by_day(sessions, model)
+                if fmt == "json":
+                    self._send_json({d: {"sessions": v["sessions"], "turns": v["turns"], "models": dict(v["models"])}
+                                     for d, v in sorted(by_day.items())})
+                    return
+                rows = ""
+                for d in sorted(by_day):
+                    v = by_day[d]
+                    models = html_mod.escape(", ".join(f"{m}:{c}" for m, c in v["models"].most_common(4))) if by_model else ""
+                    rows += f"<tr><td>{d}</td><td>{v['sessions']}</td><td>{v['turns']}</td><td>{models}</td></tr>"
+                body = (f'<table><tr><th>date</th><th>sessions</th><th>turns</th><th>models</th></tr>{rows}</table>')
+                self._send_html(self._analytics_page("activity", body))
+
             def _serve_index(self, query):
                 project_filter = query.get("project", [None])[0]
+                model_filter = query.get("model", [None])[0]
                 sessions = find_all_sessions(project_filter)
+                if model_filter:
+                    sessions = [s for s in sessions if s.has_model(model_filter)]
 
                 rows = []
                 for s in sessions:
@@ -2099,11 +2980,14 @@ class ServeCommand(Command):
 
             def _serve_search(self, query):
                 q = query.get("q", [""])[0]
+                model_filter = query.get("model", [None])[0]
                 if not q:
                     self._send_html("<html><body>No query</body></html>")
                     return
 
                 sessions = find_all_sessions()
+                if model_filter:
+                    sessions = [s for s in sessions if s.has_model(model_filter)]
                 results = []
                 for s in sessions:
                     try:
@@ -2131,6 +3015,8 @@ class ServeCommand(Command):
                 page = WEB_TEMPLATE_SEARCH.replace("{{ROWS}}", "\n".join(rows))
                 page = page.replace("{{QUERY}}", html_mod.escape(q))
                 page = page.replace("{{COUNT}}", str(len(results)))
+                page = page.replace("{{MODEL_NOTE}}",
+                                    f" · model: {html_mod.escape(model_filter)}" if model_filter else "")
                 self._send_html(page)
 
         try:
@@ -2315,8 +3201,16 @@ class ProtectCommand(Command):
         if not SETTINGS_FILE.exists():
             settings = {}
         else:
-            with open(SETTINGS_FILE, "r") as f:
-                settings = json.load(f)
+            # This edits the file that configures Claude Code itself: read it as UTF-8
+            # (platform-default cp1252 mojibakes umlauts, then writes them back), and
+            # refuse to touch it at all if it doesn't parse cleanly.
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    settings = json.load(f)
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+                print(f"Refusing to modify {SETTINGS_FILE}: could not read it cleanly ({e}).")
+                print("Fix the file first — this command edits Claude Code's own configuration.")
+                return
 
         current = settings.get("cleanupPeriodDays")
         if current and current >= 99999:
@@ -2331,7 +3225,7 @@ class ProtectCommand(Command):
 
         # Atomic write: write to temp file, then rename (prevents corruption on crash)
         tmp = SETTINGS_FILE.with_suffix(".tmp")
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2)
             f.write("\n")
         tmp.replace(SETTINGS_FILE)
@@ -2342,11 +3236,88 @@ class ProtectCommand(Command):
 
 # ─── Command Registry ────────────────────────────────────────────────────────
 
+class OpenCommand(Command):
+    """Render a session to HTML in a temp dir and open it in the browser.
+
+    Thin alias for `export --format html --open` with a temp output dir — the
+    `list` tip advertised `open N` while no such command existed."""
+
+    name = "open"
+    aliases = ()
+
+    def execute(self):
+        import tempfile
+        args = self.args
+        args.format = "html"
+        args.output = str(Path(tempfile.gettempdir()) / "claude-chat-open")
+        args.stdout = False
+        args.open = True
+        ExportCommand(args).execute()
+
+
+class UsageCommand(Command):
+    """Per-month token usage summed from message.usage fields (raw line scan, no parse)."""
+
+    name = "usage"
+    aliases = ("tokens",)
+
+    def execute(self):
+        by_model = getattr(self.args, "by_model", False)
+        rows = {}
+        files = 0
+        for s in find_all_sessions(getattr(self.args, "project", None)):
+            files += 1
+            try:
+                with open(s.path, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        if '"usage"' not in line:
+                            continue
+                        try:
+                            o = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        msg = o.get("message") or {}
+                        u = msg.get("usage")
+                        ts = o.get("timestamp", "")
+                        if not u or not ts:
+                            continue
+                        key = (ts[:7], (msg.get("model") or "?") if by_model else "")
+                        d = rows.setdefault(key, {"in": 0, "out": 0, "cw": 0, "cr": 0, "msgs": 0})
+                        d["in"] += u.get("input_tokens", 0) or 0
+                        d["out"] += u.get("output_tokens", 0) or 0
+                        d["cw"] += u.get("cache_creation_input_tokens", 0) or 0
+                        d["cr"] += u.get("cache_read_input_tokens", 0) or 0
+                        d["msgs"] += 1
+            except OSError:
+                continue
+        if not rows:
+            print("No usage data found in transcripts.")
+            return
+        print(f"scanned {files} transcript file(s)\n")
+        hdr = f"{'month':8} "
+        if by_model:
+            hdr += f"{'model':34} "
+        hdr += f"{'msgs':>7} {'input':>12} {'output':>12} {'cache-write':>13} {'cache-read':>14} {'TOTAL':>14}"
+        print(hdr)
+        for (m, mdl) in sorted(rows):
+            d = rows[(m, mdl)]
+            total = d["in"] + d["out"] + d["cw"] + d["cr"]
+            line = f"{m:8} "
+            if by_model:
+                line += f"{mdl:34} "
+            line += f"{d['msgs']:>7,} {d['in']:>12,} {d['out']:>12,} {d['cw']:>13,} {d['cr']:>14,} {total:>14,}"
+            print(line)
+        print("\nfresh = input+output (the /usage-style number); TOTAL includes cache reads")
+        print("(what was actually processed). Counts THIS machine's transcripts only.")
+
+
 def _build_command_registry():
     """Map every command name + alias to its Command class."""
     classes = [
         ListCommand, SearchCommand, ExportCommand, BackupCommand,
-        StatsCommand, ExtractCommand, ServeCommand, WikiCommand, ProtectCommand,
+        StatsCommand, ExtractCommand, ProfileCommand, CompareCommand,
+        ActivityCommand, ServeCommand, WikiCommand, ProtectCommand,
+        OpenCommand, UsageCommand,
     ]
     registry = {}
     for cls in classes:
@@ -2397,6 +3368,14 @@ def cmd_wiki(args):
 
 def cmd_protect(args):
     ProtectCommand(args).execute()
+
+
+def cmd_open(args):
+    OpenCommand(args).execute()
+
+
+def cmd_usage(args):
+    UsageCommand(args).execute()
 
 
 # ─── HTML Templates ──────────────────────────────────────────────────────────
@@ -2541,8 +3520,10 @@ tr:hover { background: var(--hover); }
     this.querySelector('input').style.opacity='0.6';
 ">
     <input type="text" name="q" placeholder="Search across all conversations..." autofocus>
+    <input type="text" name="model" placeholder="model (e.g. fable)" style="max-width:180px">
     <button type="submit">Search</button>
 </form>
+<div style="margin:0 0 14px 0;color:#565f89;font-size:0.9em;">analytics: <a href="/profile" style="color:#7aa2f7;">profile</a> &middot; <a href="/compare?a=fable&amp;b=opus" style="color:#7aa2f7;">compare</a> &middot; <a href="/activity?by_model=1" style="color:#7aa2f7;">activity</a></div>
 <table>
 <tr><th>Session</th><th>Date</th><th>Size</th><th>Project</th><th>Summary</th></tr>
 {{ROWS}}
@@ -2679,7 +3660,7 @@ tr:hover { background: var(--hover); }
 <body>
 <a class="back" href="/">&#8592; Back</a>
 <h1>Search: "{{QUERY}}"</h1>
-<div class="stats">{{COUNT}} session(s) found</div>
+<div class="stats">{{COUNT}} session(s) found{{MODEL_NOTE}}</div>
 <table>
 <tr><th>Session</th><th>Matches</th><th>Date</th><th>Summary</th></tr>
 {{ROWS}}
@@ -2699,10 +3680,16 @@ _INTERACTIVE_HELP = (
     "  export SESSION --format html  Export session (md/html/txt/tex)\n"
     "  export SESSION --format html --rich   Rich HTML (math, tables, links)\n"
     "  export SESSION --format html --diagrams   Add mermaid tool-call diagram\n"
+    "  open SESSION                  Render to HTML (temp dir) + open in browser\n"
     "  stats                         Usage statistics\n"
+    "  usage                         Monthly token usage table (--by-model)\n"
+    "  profile                       Per-model behavioral fingerprint\n"
+    "  compare fable opus            Compare two models (delta table)\n"
+    "  activity                      Sessions + turns per day\n"
     "  extract SESSION --code        Extract code blocks\n"
     "  extract SESSION --ideas       Extract your messages\n"
     "  serve                         Open browser UI\n"
+    "  wiki --open                   Static cross-linked HTML archive\n"
     "  backup --watch                Continuous backup\n"
     "  protect                       Prevent auto-deletion\n"
     "  help                          Show this help\n"
@@ -2717,8 +3704,9 @@ _INTERACTIVE_HELP = (
 )
 
 _VALID_COMMANDS = {
-    "list", "ls", "search", "grep", "find", "export", "backup",
-    "stats", "extract", "serve", "web", "browse", "wiki", "archive", "protect",
+    "list", "ls", "search", "grep", "find", "export", "open", "backup",
+    "stats", "usage", "tokens", "extract", "profile", "compare", "diff",
+    "activity", "timeline", "serve", "web", "browse", "wiki", "archive", "protect",
 }
 
 
@@ -2782,6 +3770,9 @@ class Repl:
 
     @staticmethod
     def _run_shell(shell_cmd):
+        # TRUSTED INPUT ONLY: the `!command` REPL escape runs operator-typed shell
+        # locally (shell=True) by design — it's a personal CLI. If this tool ever
+        # serves untrusted input, gate or remove this escape (no shell=True on it).
         if shell_cmd:
             import subprocess
             try:
@@ -2867,7 +3858,8 @@ Examples:
   %(prog)s list                          List recent sessions
   %(prog)s list --limit 100              Show more sessions
   %(prog)s list --smart                  Smarter headlines when first lines are useless
-  %(prog)s list --json                   Machine-readable listing for other tools
+  %(prog)s list --model fable            Only sessions with that model's turns (substring)
+  %(prog)s list --format json            Machine-readable listing for other tools
   %(prog)s search "react hooks"          Search across all chats
   %(prog)s search "auth" --in a7e44ed0   Search within ONE session (all matches)
   %(prog)s search "auth" -C 80           Wider context around each match (default 40)
@@ -2880,7 +3872,11 @@ Examples:
   %(prog)s stats                         Show statistics
   %(prog)s extract a7e44ed0 --code       Extract code blocks
   %(prog)s extract a7e44ed0 --ideas      Extract your messages
+  %(prog)s profile --model fable         Per-model behavioral fingerprint
+  %(prog)s compare fable opus            Two-model delta table
+  %(prog)s activity --by-model           Sessions + turns per day, per model
   %(prog)s serve                         Browse in your browser
+  %(prog)s wiki --open                   Build + open a static HTML archive
   %(prog)s protect                       Prevent auto-deletion
         """,
     )
@@ -2894,7 +3890,12 @@ Examples:
     p.add_argument("--limit", "-n", type=int, help="Max sessions to show")
     p.add_argument("--detail", "-d", action="store_true", help="Show preview of each session's topics")
     p.add_argument("--smart", "-s", action="store_true", help="Smarter headlines: first real ask / commit subject / edited files instead of the first message")
-    p.add_argument("--json", action="store_true", help="Machine-readable listing (JSON array with session_id, cwd, is_subagent) for other tools to consume")
+    p.add_argument("--model", "-m", help="Only sessions with turns from this model (substring, e.g. fable)")
+    # --format, not a bare --json: usage/tokens/activity already use
+    # --format {text,json} in this file, and adding a second idiom for the same
+    # job would be drift introduced by the very change meant to help other tools.
+    p.add_argument("--format", choices=["text", "json"], default="text",
+                   help="Output format (json for other tools: session_id, cwd, custom_title, is_subagent)")
 
     # search
     p = sub.add_parser("search", aliases=["grep", "find"], help="Search across all conversations")
@@ -2913,6 +3914,7 @@ Examples:
                    help="Only sessions modified on or after this date")
     p.add_argument("--before", metavar="YYYY-MM-DD",
                    help="Only sessions modified on or before this date (inclusive of the whole day)")
+    p.add_argument("--model", "-m", help="Only sessions with turns from this model (substring, e.g. fable)")
 
     # export
     p = sub.add_parser("export", help="Export session to file")
@@ -2924,7 +3926,18 @@ Examples:
     p.add_argument("--open", action="store_true", help="Open in browser/editor after export")
     p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
     p.add_argument("--diagrams", action="store_true", help="HTML: include a mermaid sequenceDiagram of tool calls")
+    p.add_argument("--thinking", action="store_true", help="Include assistant reasoning (thinking) blocks as collapsible sections (md/html). Off by default — thinking is verbose and often encrypted-empty in transcripts.")
     p.add_argument("--no-truncate", action="store_true", help="Render full tool-call inputs (md/html). Default truncates at 500/400 chars for human reading; use this for byte-perfect file recovery.")
+
+    # open — the `list` tip advertised `open N` while the command didn't exist
+    p = sub.add_parser("open", help="Render a session to HTML (temp dir) and open it in the browser")
+    p.add_argument("session_id", nargs="?", help="Session ID (full or first 8 chars). Omit when using --file.")
+    p.add_argument("--file", help="Path to a JSONL transcript file. Bypasses session lookup.")
+    p.add_argument("--rich", action="store_true", help="Rich HTML: clickable links, KaTeX math, tables")
+    p.add_argument("--diagrams", action="store_true", help="Include a mermaid sequenceDiagram of tool calls")
+    p.add_argument("--thinking", action="store_true", help="Include assistant reasoning (thinking) blocks")
+    p.add_argument("--no-truncate", action="store_true", help="Render full tool-call inputs")
+    p.set_defaults(func=cmd_open)
 
     # backup
     p = sub.add_parser("backup", help="Backup session files")
@@ -2934,17 +3947,51 @@ Examples:
     p.add_argument("--interval", "-i", type=int, default=10, help="Poll interval (seconds)")
 
     # stats
+    p = sub.add_parser("usage", aliases=["tokens"], help="Monthly token usage summed from transcript usage fields")
+    p.add_argument("--by-model", action="store_true", help="Split each month per model")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.set_defaults(func=cmd_usage)
+
     p = sub.add_parser("stats", help="Show usage statistics")
     p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--model", "-m", help="Only sessions with turns from this model (substring, e.g. fable)")
 
     # extract
     p = sub.add_parser("extract", help="Extract content from session")
     p.add_argument("session_id", help="Session ID (full or first 8 chars)")
+    p.add_argument("--turns", action="store_true", help="Compact per-turn JSONL dump (ts, role, model, tools, text) for analysis/piping")
     p.add_argument("--code", action="store_true", help="Extract code blocks")
     p.add_argument("--ideas", action="store_true", help="Extract your messages")
     p.add_argument("--decisions", action="store_true", help="Extract decision points")
     p.add_argument("--no-truncate", action="store_true", help="Show full content without character cap (applies to --ideas and --decisions)")
     p.add_argument("--limit", type=int, help="Per-item character cap (default: 300 for --ideas, ~130 for --decisions snippet window)")
+
+    # profile — per-model behavioral fingerprint
+    p = sub.add_parser("profile", help="Per-model behavioral fingerprint (reasoning %%, first-tools, tool intensity)")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
+    p.add_argument("--model", "-m", help="Restrict to models matching this substring")
+    p.add_argument("--by-session", dest="by_session", action="store_true", help="One row-group per session (replication / confound view)")
+    p.add_argument("--min-turns", dest="min_turns", type=int, default=0, help="In --by-session, drop rows with fewer turns (filters 1-turn subagent noise)")
+    p.add_argument("--tools", action="store_true", help="Append full tool-usage histogram per model")
+    p.add_argument("--format", choices=["text", "json"], default="text", help="Output format (json for charting/piping)")
+
+    # compare — two-model delta table
+    p = sub.add_parser("compare", aliases=["diff"], help="Compare two models' behavioral profiles (delta table)")
+    p.add_argument("model_a", help="First model (substring, e.g. fable)")
+    p.add_argument("model_b", help="Second model (substring, e.g. opus)")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--in", dest="in_session", metavar="SESSION_ID", help="Scope to a single session (the within-session control)")
+    p.add_argument("--by-session", dest="by_session", action="store_true", help="A vs B per session (replication / confound view)")
+    p.add_argument("--min-turns", dest="min_turns", type=int, default=0, help="In --by-session, drop rows with fewer turns (filters 1-turn subagent noise)")
+    p.add_argument("--format", choices=["text", "json"], default="text", help="Output format (json for charting/piping)")
+
+    # activity — usage over time
+    p = sub.add_parser("activity", aliases=["timeline"], help="Sessions + turns per day (optionally per model)")
+    p.add_argument("--project", "-p", help="Filter by project name")
+    p.add_argument("--model", "-m", help="Only sessions/turns from this model (substring)")
+    p.add_argument("--by-model", dest="by_model", action="store_true", help="Break the per-day turn counts down by model")
+    p.add_argument("--format", choices=["text", "json"], default="text", help="Output format (json for charting/piping)")
 
     # serve
     p = sub.add_parser("serve", aliases=["web", "browse"], help="Browse in your browser")
@@ -2973,6 +4020,17 @@ def main():
     _fix_windows_encoding()
 
     parser = _build_parser()
+
+    # `help` is a REPL command; mirror it at the CLI so `claude-chat.py help`
+    # (and `help <command>`) print help instead of an argparse "invalid choice"
+    # error. There is no `help` subcommand — this is a pre-parse shim.
+    argv = sys.argv[1:]
+    if argv and argv[0] in ("help", "?"):
+        if len(argv) >= 2:
+            parser.parse_args([argv[1], "--help"])  # argparse prints + exits
+        parser.print_help()
+        return
+
     args = parser.parse_args()
 
     if not args.command:

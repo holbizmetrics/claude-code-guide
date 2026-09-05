@@ -48,6 +48,7 @@ jobs:
           mkdir -p "$STAGE"
           cp tool/claude-chat.py "$STAGE"/
           cp tool/COOKBOOK.md    "$STAGE"/
+          cp tool/CHANGELOG.md   "$STAGE"/ 2>/dev/null || true
           cp tool/NOTES.md       "$STAGE"/ 2>/dev/null || true
           cp LICENSE             "$STAGE"/ 2>/dev/null || true
           printf '%s\n' \

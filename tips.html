@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>15 Things I Wish I Knew Earlier &mdash; Claude Code</title>
+<meta name="description" content="15 Claude Code features hiding in plain sight that solve problems you probably work around every day.">
+<meta property="og:title" content="Claude Code: 15 Things I Wish I Knew Earlier">
+<meta property="og:description" content="Features hiding in plain sight that change how you work with Claude Code.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://holbizmetrics.github.io/claude-code-guide/tips.html">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Claude Code: 15 Things I Wish I Knew Earlier">
+<meta name="twitter:description" content="15 features hiding in plain sight that change how you work.">
+<meta name="theme-color" content="#da7756">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%3E</text></svg>">
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-secondary: #0a0e14;
+    --bg-tertiary: #161b22;
+    --bg-hover: #1c2129;
+    --border: #21262d;
+    --border-bright: #30363d;
+    --text: #c9d1d9;
+    --text-bright: #e6edf3;
+    --text-muted: #656d76;
+    --text-dim: #484f58;
+    --accent: #da7756;
+    --accent-light: #e8956e;
+    --accent-dim: #b86544;
+    --green: #3fb950;
+    --green-dim: #238636;
+    --yellow: #d29922;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --cyan: #76e4f7;
+    --code-bg: #0d1117;
+    --nav-width: 260px;
+    --chrome-height: 38px;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'SF Mono', 'Consolas', monospace;
+    background: #000;
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 13.5px;
+  }
+
+  /* ===== TERMINAL WINDOW CHROME ===== */
+  .terminal-window {
+    max-width: 1500px;
+    margin: 12px auto;
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05);
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 24px);
+  }
+
+  .terminal-chrome {
+    background: linear-gradient(180deg, #2d2d2d 0%, #252525 100%);
+    height: var(--chrome-height);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #1a1a1a;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .window-dots {
+    display: flex;
+    gap: 8px;
+    margin-right: 16px;
+  }
+
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+
+  .dot-red { background: #ff5f57; }
+  .dot-yellow { background: #febc2e; }
+  .dot-green { background: #28c840; }
+
+  .terminal-title {
+    flex: 1;
+    text-align: center;
+    color: #999;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+
+  .terminal-title .path { color: #666; }
+
+  .terminal-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  /* ===== SIDEBAR NAVIGATION ===== */
+  nav {
+    width: var(--nav-width);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    padding-bottom: 20px;
+  }
+
+  nav::-webkit-scrollbar { width: 6px; }
+  nav::-webkit-scrollbar-track { background: transparent; }
+  nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .nav-header {
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+
+  .nav-header .prompt {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .nav-header .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background: var(--accent);
+    margin-left: 4px;
+    vertical-align: middle;
+    animation: blink 1.2s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .nav-header .info {
+    color: var(--text-dim);
+    font-size: 10.5px;
+    margin-top: 4px;
+    letter-spacing: 0.3px;
+  }
+
+  nav a {
+    display: block;
+    padding: 4px 16px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 12px;
+    transition: all 0.1s;
+    border-left: 2px solid transparent;
+  }
+
+  nav a:hover {
+    color: var(--text-bright);
+    background: var(--bg-hover);
+    border-left-color: var(--accent-dim);
+  }
+
+  nav a.section-header {
+    color: var(--accent-dim);
+    font-weight: 600;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 14px;
+    padding-top: 10px;
+    padding-bottom: 6px;
+    border-top: 1px solid var(--border);
+    cursor: default;
+    pointer-events: none;
+  }
+
+  nav a.section-header:first-child { border-top: none; margin-top: 6px; }
+
+  nav a::before {
+    content: '>';
+    color: var(--text-dim);
+    margin-right: 6px;
+    font-weight: 400;
+  }
+
+  nav a.section-header::before { content: '#'; color: var(--accent-dim); }
+
+  /* ===== MAIN CONTENT ===== */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 30px 50px 100px;
+    max-width: 860px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  main::-webkit-scrollbar { width: 8px; }
+  main::-webkit-scrollbar-track { background: transparent; }
+  main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Title area */
+  .title-block {
+    margin-bottom: 36px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .title-block h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+  }
+
+  .title-block .subtitle {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .title-block .subtitle a {
+    color: var(--blue);
+    text-decoration: none;
+  }
+
+  .title-block .subtitle a:hover {
+    text-decoration: underline;
+  }
+
+  /* Section headers - terminal prompt style */
+  h2 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-top: 44px;
+    margin-bottom: 18px;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+    scroll-margin-top: 20px;
+  }
+
+  h2::before {
+    color: var(--accent-dim);
+    font-weight: 400;
+  }
+
+  h2:first-of-type { margin-top: 0; }
+
+  /* Tip number styling */
+  .tip-num {
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 4px;
+  }
+
+  h3 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 24px;
+    margin-bottom: 10px;
+    color: var(--green);
+    letter-spacing: 0.2px;
+  }
+
+  h3::before {
+    content: '## ';
+    color: var(--green-dim);
+  }
+
+  /* Paragraphs and text */
+  p { margin-bottom: 12px; }
+
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; color: #79c0ff; }
+
+  strong { color: var(--text-bright); font-weight: 600; }
+  em { color: var(--text-muted); font-style: italic; }
+
+  /* Inline code */
+  code {
+    background: rgba(218,119,86,0.1);
+    border: 1px solid rgba(218,119,86,0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.92em;
+    color: var(--accent-light);
+  }
+
+  /* Code blocks - terminal session style */
+  pre {
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    overflow-x: auto;
+    margin: 12px 0 16px;
+    line-height: 1.55;
+    position: relative;
+  }
+
+  pre::before {
+    content: 'TERMINAL';
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 2px 10px;
+    font-size: 9px;
+    color: var(--text-dim);
+    background: var(--bg-tertiary);
+    border-bottom-left-radius: 6px;
+    border-left: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text);
+    font-size: 12px;
+  }
+
+  /* Gap/Fix pattern styling */
+  .gap {
+    color: var(--yellow);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+  }
+
+  .fix {
+    color: var(--green);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.3px;
+  }
+
+  /* Key badges */
+  .key {
+    display: inline-block;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-bright);
+    border-bottom: 2px solid var(--border-bright);
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-size: 11px;
+    min-width: 22px;
+    text-align: center;
+    color: var(--text-bright);
+  }
+
+  .separator { margin: 0 2px; color: var(--text-dim); font-size: 11px; }
+
+  /* Callout boxes */
+  .callout {
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+    position: relative;
+  }
+
+  .callout::before {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    padding: 2px 8px;
+    border-bottom-left-radius: 4px;
+    background: var(--accent-dim);
+    color: #000;
+  }
+
+  .callout.tip { border-left-color: var(--green); }
+  .callout.tip::before { content: 'TIP'; background: var(--green-dim); }
+
+  .callout.workflow { border-left-color: var(--cyan); }
+  .callout.workflow::before { content: 'WORKFLOW'; background: #1a6b7a; }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 18px;
+    font-size: 12px;
+  }
+
+  th {
+    background: var(--bg-tertiary);
+    color: var(--accent);
+    text-align: left;
+    padding: 8px 12px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  td {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+  tr:hover { background: rgba(218,119,86,0.04); }
+
+  ul, ol { margin: 8px 0 12px 20px; }
+  li { margin-bottom: 4px; }
+  li::marker { color: var(--text-dim); }
+
+  /* Status line at bottom */
+  .status-bar {
+    background: var(--accent-dim);
+    color: #000;
+    padding: 3px 16px;
+    font-size: 10.5px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    flex-shrink: 0;
+    letter-spacing: 0.2px;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 50px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+
+  /* Mobile hamburger */
+  .hamburger {
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 200;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    font-size: 22px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    font-family: inherit;
+    line-height: 48px;
+    text-align: center;
+  }
+
+  .hamburger:active { transform: scale(0.93); }
+
+  /* Back to top */
+  .back-to-top {
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 200;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    border: 1px solid var(--border-bright);
+    font-size: 18px;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: 40px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transition: opacity 0.2s;
+  }
+
+  .back-to-top:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .terminal-window {
+      margin: 0;
+      border-radius: 0;
+      border: none;
+      height: 100vh;
+    }
+    nav {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 85vw;
+      max-width: 320px;
+      height: 100vh;
+      z-index: 150;
+      box-shadow: 4px 0 20px rgba(0,0,0,0.6);
+    }
+    nav.open { display: block; }
+    .nav-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 140;
+    }
+    .nav-overlay.open { display: block; }
+    .hamburger { display: block; }
+    main { padding: 16px; }
+  }
+
+  html { scroll-behavior: smooth; }
+  h2[id] { scroll-margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<div class="terminal-window">
+
+  <div class="terminal-chrome">
+    <div class="window-dots">
+      <div class="dot dot-red"></div>
+      <div class="dot dot-yellow"></div>
+      <div class="dot dot-green"></div>
+    </div>
+    <div class="terminal-title">
+      claude &mdash; <span class="path">~/claude-code-guide/tips</span>
+    </div>
+  </div>
+
+  <div class="terminal-body">
+
+<nav>
+  <div class="nav-header">
+    <div class="prompt">&gt; 15-things<span class="cursor"></span></div>
+    <div class="info">Quick Wins &bull; March 2026</div>
+  </div>
+
+  <a class="section-header">The 15 Things</a>
+  <a href="#tip-1">1. Launch with a prompt</a>
+  <a href="#tip-2">2. Session names as status</a>
+  <a href="#tip-3">3. Session picker controls</a>
+  <a href="#tip-4">4. Branch conversations</a>
+  <a href="#tip-5">5. Focus your context</a>
+  <a href="#tip-6">6. Shell commands in chat</a>
+  <a href="#tip-7">7. Claude as a Unix pipe</a>
+  <a href="#tip-8">8. Keyboard shortcuts</a>
+  <a href="#tip-9">9. Side questions</a>
+  <a href="#tip-10">10. CLAUDE.md</a>
+  <a href="#tip-11">11. Auto-allow safe commands</a>
+  <a href="#tip-12">12. @ file references</a>
+  <a href="#tip-13">13. Custom agents</a>
+  <a href="#tip-14">14. Color-coded sessions</a>
+  <a href="#tip-15">15. Quick returns</a>
+
+  <a class="section-header">Putting It Together</a>
+  <a href="#workflows">Real Workflows</a>
+  <a href="#where">Where It All Lives</a>
+
+  <a class="section-header">More</a>
+  <a href="index.html">Full Reference Guide</a>
+</nav>
+
+<main>
+
+<div class="title-block">
+  <h1>15 Things I Wish I Knew Earlier</h1>
+  <p class="subtitle">Features hiding in plain sight that solve problems you probably work around every day.<br>
+  Want the full reference? See the <a href="index.html">Complete Claude Code Guide</a>.</p>
+</div>
+
+<!-- ==================== TIP 1 ==================== -->
+
+<h2 id="tip-1"><span class="tip-num">1.</span> Stop Launching Claude and Then Typing</h2>
+
+<p><span class="gap">The gap:</span> You open Claude Code, wait for it to load, THEN type your first instruction. Every single time.</p>
+
+<p><span class="fix">The fix:</span> Do it all in one shot from the terminal.</p>
+
+<pre><code>claude "Review the auth module for security gaps"</code></pre>
+
+<p>It launches and immediately starts working. No warmup.</p>
+
+<p>Add a name so you can find it later:</p>
+
+<pre><code>claude -n "auth-review" "Check the login flow for vulnerabilities"</code></pre>
+
+<p>Name + initial prompt + go. By the time the session is live, it's already working. You land running.</p>
+
+<!-- ==================== TIP 2 ==================== -->
+
+<h2 id="tip-2"><span class="tip-num">2.</span> Session Names Are Status Messages</h2>
+
+<p><span class="gap">The gap:</span> You're juggling three sessions. You try to resume one and see a list of cryptic IDs or random first messages. Which one was which?</p>
+
+<p><span class="fix">The fix:</span> Name your sessions. But the real trick is <strong>updating</strong> the name as you go.</p>
+
+<pre><code>/rename "auth - building token refresh"
+/rename "auth - waiting on API review"
+/rename "auth - DONE, ready to merge"</code></pre>
+
+<p>The name shows in the resume picker. When you have multiple sessions going, you see the current state of each one at a glance.</p>
+
+<p>Name at startup too:</p>
+
+<pre><code>claude -n "payment-v2"</code></pre>
+
+<!-- ==================== TIP 3 ==================== -->
+
+<h2 id="tip-3"><span class="tip-num">3.</span> The Session Picker Has Hidden Controls</h2>
+
+<p><span class="gap">The gap:</span> You resume sessions by scrolling a list.</p>
+
+<p><span class="fix">The fix:</span> Type <code>claude --resume</code> and use these keys:</p>
+
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><span class="key">P</span></td><td>Preview a session before opening it</td></tr>
+  <tr><td><span class="key">R</span></td><td>Rename it right from the picker</td></tr>
+  <tr><td><span class="key">/</span></td><td>Search and filter</td></tr>
+  <tr><td><span class="key">A</span></td><td>Show ALL projects (not just current directory)</td></tr>
+  <tr><td><span class="key">B</span></td><td>Filter by git branch</td></tr>
+</table>
+
+<p>It's a session manager, not just a list.</p>
+
+<!-- ==================== TIP 4 ==================== -->
+
+<h2 id="tip-4"><span class="tip-num">4.</span> Branch Your Conversations</h2>
+
+<p><span class="gap">The gap:</span> You want to try a risky approach but don't want to pollute your working session.</p>
+
+<p><span class="fix">The fix:</span></p>
+
+<pre><code>claude --resume my-session --fork-session</code></pre>
+
+<p>New session, branched from the old one. Original untouched. Dead end? Go back. It works? Keep the fork.</p>
+
+<p>Git branches for conversations.</p>
+
+<p>Mid-session, you can also type <code>/branch</code> (or its alias <code>/fork</code>) to branch from where you are right now.</p>
+
+<!-- ==================== TIP 5 ==================== -->
+
+<h2 id="tip-5"><span class="tip-num">5.</span> Your Context Window Is Running Out? Focus It</h2>
+
+<p><span class="gap">The gap:</span> Long session. Claude starts &ldquo;forgetting&rdquo; earlier context. You lose quality or start a new session and lose everything.</p>
+
+<p><span class="fix">The fix:</span></p>
+
+<pre><code>/compact focus on the authentication flow and the test failures from step 3</code></pre>
+
+<p>This compresses the conversation but <strong>keeps what you told it to focus on</strong>. Fresh context window with the important stuff preserved. You don't have to choose between continuity and quality.</p>
+
+<!-- ==================== TIP 6 ==================== -->
+
+<h2 id="tip-6"><span class="tip-num">6.</span> Shell Commands as Conversation Context</h2>
+
+<p><span class="gap">The gap:</span> You run a command in another terminal, copy the output, paste it into Claude, explain what it means.</p>
+
+<p><span class="fix">The fix:</span> Just type <code>!</code> before the command:</p>
+
+<pre><code>! git log --oneline -10
+! npm test
+! cat error.log</code></pre>
+
+<p>Output lands directly in the conversation. Claude sees it, reasons about it. No copy-paste, no explaining. Just bang-command and move on.</p>
+
+<!-- ==================== TIP 7 ==================== -->
+
+<h2 id="tip-7"><span class="tip-num">7.</span> Claude as a Unix Pipe</h2>
+
+<p><span class="gap">The gap:</span> You need a quick answer but don't want to start a whole session.</p>
+
+<p><span class="fix">The fix:</span> Print mode.</p>
+
+<pre><code>cat build-errors.txt | claude -p "what went wrong?"
+git diff | claude -p "write a commit message" > commit-msg.txt
+git diff | claude -p "any security issues?" | mail -s "Review" team@co.com</code></pre>
+
+<p>The <code>-p</code> flag means: answer and exit. No interactive session. Pipe in, pipe out. Build Claude into your shell workflows, scripts, CI/CD.</p>
+
+<!-- ==================== TIP 8 ==================== -->
+
+<h2 id="tip-8"><span class="tip-num">8.</span> Keyboard Shortcuts That Change Everything</h2>
+
+<p>These are the ones I use constantly:</p>
+
+<table>
+  <tr><th>Shortcut</th><th>What It Does</th></tr>
+  <tr>
+    <td><span class="key">Shift</span><span class="separator">+</span><span class="key">Tab</span></td>
+    <td>Cycle permission modes. Tired of clicking &ldquo;yes&rdquo; on every file edit? One keystroke to <code>acceptEdits</code> mode.</td>
+  </tr>
+  <tr>
+    <td><span class="key">Esc</span> <span class="key">Esc</span></td>
+    <td>Rewind. Opens a message picker. Scroll back and <strong>restore your code</strong> to any previous point. Undo on steroids.</td>
+  </tr>
+  <tr>
+    <td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">V</span> (Mac)<br><span class="key">Alt</span><span class="separator">+</span><span class="key">V</span> (Win/Linux)</td>
+    <td>Paste an image from clipboard. Screenshots, error dialogs, design mockups &mdash; Claude sees them and reasons about them.</td>
+  </tr>
+  <tr>
+    <td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">G</span></td>
+    <td>Open your prompt in an external editor. Write complex prompts in VS Code or Vim instead of a tiny terminal line.</td>
+  </tr>
+  <tr>
+    <td><span class="key">Ctrl</span><span class="separator">+</span><span class="key">O</span></td>
+    <td>Verbose mode. See Claude's internal reasoning in gray text. Understand <strong>why</strong> it made a decision.</td>
+  </tr>
+  <tr>
+    <td><span class="key">Option</span><span class="separator">+</span><span class="key">O</span> (Mac)<br><span class="key">Alt</span><span class="separator">+</span><span class="key">O</span> (Win/Linux)</td>
+    <td>Fast mode toggle. Same model, faster output. Great for simple stuff.</td>
+  </tr>
+  <tr>
+    <td><span class="key">Option</span><span class="separator">+</span><span class="key">T</span> (Mac)<br><span class="key">Alt</span><span class="separator">+</span><span class="key">T</span> (Win/Linux)</td>
+    <td>Extended thinking toggle. When you need Claude to think harder.</td>
+  </tr>
+</table>
+
+<!-- ==================== TIP 9 ==================== -->
+
+<h2 id="tip-9"><span class="tip-num">9.</span> Side Questions That Don't Interrupt</h2>
+
+<p><span class="gap">The gap:</span> Claude is in the middle of a big task. You have a quick question. If you type it, you derail the work.</p>
+
+<p><span class="fix">The fix:</span></p>
+
+<pre><code>/btw what's the name of that config file?</code></pre>
+
+<p>Uses cached context (cheap). Gives you one answer. Does <strong>not</strong> go into conversation history. It's like whispering a question while someone is working &mdash; they answer and keep going.</p>
+
+<!-- ==================== TIP 10 ==================== -->
+
+<h2 id="tip-10"><span class="tip-num">10.</span> CLAUDE.md Is Your Project's Persistent Brain</h2>
+
+<p><span class="gap">The gap:</span> Every new session, you re-explain your project conventions. &ldquo;We use TypeScript.&rdquo; &ldquo;Tests go in __tests__.&rdquo; &ldquo;Don't touch the legacy folder.&rdquo; Over and over.</p>
+
+<p><span class="fix">The fix:</span> Put it in <code>CLAUDE.md</code> at your project root. Claude reads it automatically on every session.</p>
+
+<p>But here's what most people don't realize:</p>
+
+<h3>a) Nested CLAUDE.md files</h3>
+<p>Put API rules in <code>src/api/CLAUDE.md</code>. Frontend rules in <code>src/ui/CLAUDE.md</code>. They load only when Claude works in those directories.</p>
+
+<h3>b) Import files with @</h3>
+<pre><code>See @README for project overview
+Follow @docs/coding-standards.md</code></pre>
+
+<h3>c) Path-specific rules</h3>
+<p>Put rule files in <code>.claude/rules/</code> with path-scoped frontmatter:</p>
+<pre><code>---
+paths:
+  - "src/api/**/*.ts"
+---
+Always validate input. Use try-catch. Log to the monitoring service.</code></pre>
+<p>These rules <strong>only</strong> activate for matching files.</p>
+
+<h3>d) Global instructions</h3>
+<p>Your personal instructions go in <code>~/.claude/CLAUDE.md</code>. Applied to <strong>all</strong> projects. Your coding style, preferences, patterns &mdash; write once, always active.</p>
+
+<!-- ==================== TIP 11 ==================== -->
+
+<h2 id="tip-11"><span class="tip-num">11.</span> Stop Clicking &ldquo;Yes&rdquo; for Safe Commands</h2>
+
+<p><span class="gap">The gap:</span> Claude asks permission for every action. Reading files? &ldquo;Yes.&rdquo; Running tests? &ldquo;Yes.&rdquo; Git status? &ldquo;Yes.&rdquo; You become a permission-clicking machine.</p>
+
+<p><span class="fix">The fix:</span> In <code>.claude/settings.json</code>:</p>
+
+<pre><code>{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Read"
+    ]
+  }
+}</code></pre>
+
+<p>Now Claude reads files and runs safe commands without asking. You only get prompted for things that actually need your attention.</p>
+
+<p>Or during a session: just hit <span class="key">Shift</span><span class="separator">+</span><span class="key">Tab</span> to cycle to <code>acceptEdits</code> mode. All file edits auto-approved.</p>
+
+<!-- ==================== TIP 12 ==================== -->
+
+<h2 id="tip-12"><span class="tip-num">12.</span> @ for Instant File References</h2>
+
+<p><span class="gap">The gap:</span> You type &ldquo;look at the file at src/components/auth/login.tsx&rdquo; and hope Claude finds it.</p>
+
+<p><span class="fix">The fix:</span> Type <code>@</code> and it triggers file path autocomplete.</p>
+
+<pre><code>Check @src/components/auth/login.tsx for the bug</code></pre>
+
+<p>Direct reference. No ambiguity. Works mid-sentence.</p>
+
+<!-- ==================== TIP 13 ==================== -->
+
+<h2 id="tip-13"><span class="tip-num">13.</span> Custom Agents: Build Your Own Team</h2>
+
+<p><span class="gap">The gap:</span> You keep giving Claude the same specialized instructions for recurring tasks.</p>
+
+<p><span class="fix">The fix:</span> Create an agent file in <code>.claude/agents/</code>, for example <code>security-reviewer.md</code>:</p>
+
+<pre><code>---
+description: "Reviews code for security vulnerabilities"
+tools:
+  - Read
+  - Grep
+  - Glob
+---
+You are a security reviewer focused on OWASP top 10...</code></pre>
+
+<p>Claude can spawn this as a subagent when the task fits. Build a library of agents for things you do repeatedly: code reviewer, test writer, documentation generator. Check the <a href="https://docs.anthropic.com/en/docs/claude-code">docs</a> for the full set of frontmatter options.</p>
+
+<!-- ==================== TIP 14 ==================== -->
+
+<h2 id="tip-14"><span class="tip-num">14.</span> Visual Session Tracking with /color</h2>
+
+<p><span class="gap">The gap:</span> Multiple terminal tabs, multiple sessions, they all look the same.</p>
+
+<p><span class="fix">The fix:</span></p>
+
+<pre><code>/color red
+/color blue
+/color green</code></pre>
+
+<p>Changes the prompt bar color. Red for production work. Blue for experiments. Green for tests. You see at a glance which session is which.</p>
+
+<!-- ==================== TIP 15 ==================== -->
+
+<h2 id="tip-15"><span class="tip-num">15.</span> The Quick Returns</h2>
+
+<p>Quick things that punch above their weight:</p>
+
+<table>
+  <tr><th>Command</th><th>What It Does</th></tr>
+  <tr><td><code>claude -c</code></td><td>Resumes the <strong>most recent</strong> session. No picker, no searching.</td></tr>
+  <tr><td><code>/context</code></td><td>Shows a colored grid of your context window usage. If sessions feel &ldquo;forgetful,&rdquo; this shows you why.</td></tr>
+  <tr><td><code>/cost</code></td><td>Token usage and costs for this session.</td></tr>
+  <tr><td><code>/doctor</code></td><td>Something broken? Diagnoses installation, settings, hooks, everything.</td></tr>
+  <tr><td><code>/diff</code></td><td>Interactive diff viewer. See exactly what changed.</td></tr>
+  <tr><td><code>--add-dir ../other</code></td><td>Add another directory to context. Work across repos.</td></tr>
+  <tr><td><code>--bare -p "query"</code></td><td>Fastest possible startup. Skips all loading. Perfect for scripts.</td></tr>
+  <tr><td><code>"ultrathink"</code></td><td>Put this word anywhere in a prompt to force maximum reasoning depth for that one turn.</td></tr>
+</table>
+
+<!-- ==================== WORKFLOWS ==================== -->
+
+<h2 id="workflows">Putting It Together: Real Workflows</h2>
+
+<div class="callout workflow">
+<strong>Instant code review</strong>
+<pre><code>git diff | claude -p "any bugs or security issues?"</code></pre>
+</div>
+
+<div class="callout workflow">
+<strong>Named exploration with safety net</strong>
+<pre><code>claude -n "risky-refactor"</code></pre>
+<p>Work... then <code>/branch</code> if you want to try something wild.</p>
+</div>
+
+<div class="callout workflow">
+<strong>Cross-repo context</strong>
+<pre><code>claude --add-dir ../shared-libs</code></pre>
+<p>Claude now sees both projects.</p>
+</div>
+
+<div class="callout workflow">
+<strong>Automated commit messages</strong>
+<pre><code>git diff --staged | claude -p "write a commit message" > .git/COMMIT_EDITMSG</code></pre>
+</div>
+
+<div class="callout workflow">
+<strong>Session status board</strong>
+<p>Name all sessions with <code>/rename</code> as you work. Open <code>claude --resume</code> and you see a dashboard of where everything stands.</p>
+</div>
+
+<div class="callout workflow">
+<strong>Color-coded workstreams</strong>
+<p>Terminal 1: <code>/color red</code> (production hotfix)<br>
+Terminal 2: <code>/color blue</code> (feature branch)<br>
+Terminal 3: <code>/color green</code> (test suite)</p>
+</div>
+
+<!-- ==================== WHERE ==================== -->
+
+<h2 id="where">Where This All Lives</h2>
+
+<p>Your sessions, memory, and settings are stored locally at:</p>
+
+<pre><code>~/.claude/</code></pre>
+
+<p>Sessions are persistent. They don't expire. You can resume any session from any time.</p>
+
+<table>
+  <tr><th>Path</th><th>What's In It</th></tr>
+  <tr><td><code>~/.claude/projects/</code></td><td>Your sessions, grouped by project</td></tr>
+  <tr><td><code>~/.claude/settings.json</code></td><td>Global settings and permissions</td></tr>
+  <tr><td><code>~/.claude/CLAUDE.md</code></td><td>Your personal global instructions</td></tr>
+</table>
+
+<!-- ==================== FOOTER ==================== -->
+
+<footer>
+  <p>Type <code>/help</code> in any session to see all available commands. New ones get added regularly.</p>
+  <p>Found a bug or want a feature? <a href="https://github.com/anthropics/claude-code/issues">github.com/anthropics/claude-code/issues</a></p>
+  <p style="margin-top: 12px;">Want the full reference? <a href="index.html">The Complete Claude Code Guide</a> &mdash; 50+ sections, every feature covered.</p>
+</footer>
+
+</main>
+
+  </div><!-- terminal-body -->
+
+  <div class="status-bar">
+    <span class="status-left">15 things &mdash; Claude Code Tips &mdash; Holger Morlok</span>
+    <span class="status-right">March 2026</span>
+  </div>
+
+</div><!-- terminal-window -->
+
+<div class="nav-overlay" id="navOverlay"></div>
+<button class="hamburger" id="hamburger" aria-label="Open navigation">&gt;_</button>
+<button class="back-to-top" id="backToTop" aria-label="Back to top">&uarr;</button>
+
+<script>
+// Mobile nav toggle
+const hamburger = document.getElementById('hamburger');
+const nav = document.querySelector('nav');
+const overlay = document.getElementById('navOverlay');
+
+hamburger.addEventListener('click', () => {
+  nav.classList.toggle('open');
+  overlay.classList.toggle('open');
+});
+
+overlay.addEventListener('click', () => {
+  nav.classList.remove('open');
+  overlay.classList.remove('open');
+});
+
+// Close nav when clicking a link (mobile)
+nav.querySelectorAll('a[href]').forEach(a => {
+  a.addEventListener('click', () => {
+    nav.classList.remove('open');
+    overlay.classList.remove('open');
+  });
+});
+
+// Back to top
+const backToTop = document.getElementById('backToTop');
+const mainEl = document.querySelector('main');
+
+mainEl.addEventListener('scroll', () => {
+  backToTop.style.display = mainEl.scrollTop > 600 ? 'block' : 'none';
+});
+
+backToTop.addEventListener('click', () => {
+  mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+});
+</script>
+
+</body>
+</html>
