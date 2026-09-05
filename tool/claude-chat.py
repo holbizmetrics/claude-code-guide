@@ -173,6 +173,39 @@ class Session:
         self.size = self._stat.st_size
         self._parsed = False
 
+    @property
+    def cwd(self):
+        """The working directory this session ran in, or None.
+
+        `project` is the MANGLED directory name (-home-user-Foo, D--Work-Foo) and
+        does not round-trip to a real path -- a directory whose own name contains
+        a dash is indistinguishable from a separator. The transcript records carry
+        the real `cwd`, so it is read from there: cheaply, from the first records
+        only, without parsing the whole file (a session can be 30MB).
+
+        None means "not found in the records read", never "no directory" -- a
+        caller must not render it as the current directory.
+        """
+        if getattr(self, "_cwd", "unset") != "unset":
+            return self._cwd
+        self._cwd = None
+        try:
+            with self.path.open(encoding="utf-8", errors="replace") as fh:
+                for _ in range(20):
+                    line = fh.readline()
+                    if not line:
+                        break
+                    try:
+                        rec = json.loads(line)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    if isinstance(rec, dict) and rec.get("cwd"):
+                        self._cwd = rec["cwd"]
+                        break
+        except OSError:
+            pass
+        return self._cwd
+
     def parse(self):
         """Parse the JSONL file into messages."""
         if self._parsed:
@@ -1470,6 +1503,8 @@ class ListCommand(Command):
     def execute(self):
         args = self.args
         sessions = find_all_sessions(args.project)
+        if getattr(args, "json", False):
+            return self._emit_json(sessions)
         if not sessions:
             print("No sessions found.")
             return
@@ -1518,6 +1553,46 @@ class ListCommand(Command):
         print(f"\n  Total: {total} sessions across {len(set(s.project for s in sessions))} project(s)")
         if interactive:
             print(f"  Tip: use the number, e.g. `export 1 --format html` or `open 2`")
+
+    def _emit_json(self, sessions):
+        """Machine-readable listing on stdout: one JSON array, nothing else.
+
+        Added so other tools can consume the listing instead of re-implementing
+        session discovery. It respects --limit and --project like the human
+        output, and carries `cwd` and the full `session_id` so a consumer can act
+        on a row (`claude --resume <session_id>` in `cwd`) rather than only
+        display it.
+
+        `is_subagent` is included and is the field a consumer most needs: a
+        subagent transcript is not a terminal anyone can resume, and a listing
+        that hides the distinction invites exactly that mistake.
+        """
+        limit = self.args.limit or len(sessions)
+        now = datetime.now()
+        rows = []
+        for s in sessions[:limit]:
+            try:
+                headline = (s.smart_headline(120) if getattr(self.args, "smart", False)
+                            else s.summary(120))
+            except Exception:                      # noqa: BLE001
+                headline = None                    # unreadable != empty; say null
+            rows.append({
+                "session_id": s.session_id,
+                "short_id": s.short_id,
+                "project": s.project,
+                "cwd": s.cwd,
+                "path": str(s.path),
+                "modified": s.modified.isoformat(timespec="seconds"),
+                "age_seconds": int((now - s.modified).total_seconds()),
+                "size_bytes": s.size,
+                "is_subagent": s.is_subagent,
+                "agent_id": s.agent_id,
+                "parent_session_id": s.parent_session_id,
+                "headline": headline,
+            })
+        save_headline_cache()
+        print(json.dumps({"total": len(sessions), "shown": len(rows),
+                          "sessions": rows}, indent=2))
 
 
 class SearchCommand(Command):
@@ -2765,6 +2840,7 @@ Examples:
   %(prog)s list                          List recent sessions
   %(prog)s list --limit 100              Show more sessions
   %(prog)s list --smart                  Smarter headlines when first lines are useless
+  %(prog)s list --json                   Machine-readable listing for other tools
   %(prog)s search "react hooks"          Search across all chats
   %(prog)s search "auth" --in a7e44ed0   Search within ONE session (all matches)
   %(prog)s search "auth" -C 80           Wider context around each match (default 40)
@@ -2791,6 +2867,7 @@ Examples:
     p.add_argument("--limit", "-n", type=int, help="Max sessions to show")
     p.add_argument("--detail", "-d", action="store_true", help="Show preview of each session's topics")
     p.add_argument("--smart", "-s", action="store_true", help="Smarter headlines: first real ask / commit subject / edited files instead of the first message")
+    p.add_argument("--json", action="store_true", help="Machine-readable listing (JSON array with session_id, cwd, is_subagent) for other tools to consume")
 
     # search
     p = sub.add_parser("search", aliases=["grep", "find"], help="Search across all conversations")
