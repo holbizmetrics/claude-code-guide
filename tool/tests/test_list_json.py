@@ -70,6 +70,15 @@ def main():
         write_session(projects, "-d-work-repo", "aaaabbbbccccdddd",
                       "/d/work/repo", "blind authoring arm", subagent=True)
 
+        # The operator-set name, found by the Windows session 2026-09-05: it lives
+        # BESIDE the transcript, not inside it, which is why every headline
+        # heuristic in the tool had been guessing while the answer sat one
+        # directory away. A name a human chose beats any heuristic.
+        sd = projects / "-d-work-repo" / "11111111-2222-4333-8444-555555555555"
+        sd.mkdir(parents=True, exist_ok=True)
+        (sd / "custom-title.json").write_text(
+            json.dumps({"customTitle": "wide-belt chrome extension"}))
+
         r = run(home, "--json")
         check("CONTROL: --json exits 0", r.returncode == 0)
         try:
@@ -96,6 +105,11 @@ def main():
               and sub["is_subagent"] is True and real["is_subagent"] is False)
         check("a subagent carries its parent so a consumer can explain itself",
               sub is not None and sub["parent_session_id"] == "parent-session")
+        check("THE CASE: the operator's /rename title is carried",
+              real is not None and real["custom_title"] == "wide-belt chrome extension")
+        check("CONTROL: a session never renamed reports None, not an empty string "
+              "(not-renamed is not a title)",
+              sub is not None and sub["custom_title"] is None)
         check("counts are reported (total and shown), not left to be inferred",
               data.get("total") == 2 and data.get("shown") == 2)
 

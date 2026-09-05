@@ -174,6 +174,32 @@ class Session:
         self._parsed = False
 
     @property
+    def custom_title(self):
+        """The name the OPERATOR gave this session with /rename, or None.
+
+        Found by the Windows session on 2026-09-05 and worth more than any
+        headline heuristic: it is the one title a human actually chose. Lives at
+        <project>/<session_id>/custom-title.json as {"customTitle": "..."} --
+        beside the transcript, not inside it, which is why every heuristic in
+        this file had been guessing while the answer sat one directory away.
+
+        None means "not renamed", never "no title" -- callers fall back to a
+        headline rather than showing an empty name.
+        """
+        if getattr(self, "_ctitle", "unset") != "unset":
+            return self._ctitle
+        self._ctitle = None
+        if not self.is_subagent:
+            f = self.path.parent / self.session_id / "custom-title.json"
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+                t = d.get("customTitle") if isinstance(d, dict) else None
+                self._ctitle = t.strip() if isinstance(t, str) and t.strip() else None
+            except (OSError, json.JSONDecodeError, ValueError, AttributeError):
+                pass
+        return self._ctitle
+
+    @property
     def cwd(self):
         """The working directory this session ran in, or None.
 
@@ -1588,6 +1614,7 @@ class ListCommand(Command):
                 "is_subagent": s.is_subagent,
                 "agent_id": s.agent_id,
                 "parent_session_id": s.parent_session_id,
+                "custom_title": s.custom_title,
                 "headline": headline,
             })
         save_headline_cache()
