@@ -7,6 +7,19 @@ to follow [Semantic Versioning](https://semver.org/).
 Convention going forward: every bug fix lands with a regression test and a
 `### Fixed` entry here; new commands/flags land under `### Added`.
 
+## 1.1.5 — 2026-11-17
+
+### Fixed
+- **Prompts typed while the agent is working were invisible.** Claude Code stores them as
+  `{"type":"attachment","attachment":{"type":"queued_command",...}}`, not as user events, so
+  `extract --turns`, `export` and `search` dropped them. On one phone, 130 of 139 such prompts
+  across 26 sessions were missing. They are now user messages with `queued=True` (and
+  `"queued": true` in `extract --turns`). Only human ones are kept (`humanTurn: true`,
+  `commandMode: "prompt"`); background task-notifications that arrive the same way are not.
+  They do not split turns, so `profile`/`compare` metrics are unchanged.
+  Tests: `tests/test_claude_chat.py::TestQueuedPrompts` (the first one fails on 1.1.4).
+- Known residual: `message_count()` is a raw line scan and still does not count them.
+
 ## 1.1.4 — 2026-07-02
 
 Round 2 (third feature): **sidechain filtering** — legacy inline subagent traffic

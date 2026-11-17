@@ -76,10 +76,14 @@ SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 
 class Message:
     """A single message in a conversation."""
-    __slots__ = ("role", "text", "tool_calls", "thinking", "timestamp", "model", "has_thinking", "images")
+    __slots__ = ("role", "text", "tool_calls", "thinking", "timestamp", "model", "has_thinking", "images", "queued")
 
-    def __init__(self, role, text="", tool_calls=None, thinking="", timestamp=None, model=None, has_thinking=False, images=None):
+    def __init__(self, role, text="", tool_calls=None, thinking="", timestamp=None, model=None, has_thinking=False, images=None, queued=False):
         self.role = role
+        # True for a prompt the human typed WHILE the agent was working. Claude Code
+        # stores those as {"type":"attachment","attachment":{"type":"queued_command"}},
+        # not as a user event -- see Session.parse.
+        self.queued = queued
         self.text = text
         self.tool_calls = tool_calls or []
         self.thinking = thinking
@@ -303,9 +307,31 @@ class Session:
                     if not self.is_subagent and obj.get("isSidechain"):
                         continue
 
+                    ts = obj.get("timestamp")
+
+                    # Mid-work prompts: what the human types while the agent is still
+                    # working is delivered as an ATTACHMENT event, never as a user event,
+                    # so a user-event reader silently drops it (measured 2026-11-17 on one
+                    # phone: 139 typed prompts in 26 sessions, 130 of them invisible to
+                    # `extract --turns`). Keep only the human-typed ones: humanTurn=True
+                    # and commandMode "prompt". Background task-notifications arrive the
+                    # same way and are NOT the human. They are not also logged as user
+                    # events (no source_uuid points at one), so adding them cannot double
+                    # count. They are delivered mid-turn, so they do NOT segment turns.
+                    if obj.get("type") == "attachment":
+                        att = obj.get("attachment") or {}
+                        if (isinstance(att, dict) and att.get("type") == "queued_command"
+                                and att.get("humanTurn") is True
+                                and att.get("commandMode", "prompt") == "prompt"):
+                            text = self._extract_text(att.get("prompt", ""))
+                            if text:
+                                self.messages.append(Message("user", text, timestamp=ts or att.get("timestamp"),
+                                                             images=self._collect_images(att.get("prompt", "")),
+                                                             queued=True))
+                        continue
+
                     msg_data = obj.get("message", obj)
                     role = msg_data.get("role", obj.get("type", ""))
-                    ts = obj.get("timestamp")
 
                     if role == "user":
                         content = msg_data.get("content", "")
@@ -2405,6 +2431,8 @@ class ExtractCommand(Command):
         """
         for m in session.messages:
             rec = {"ts": m.timestamp, "role": m.role}
+            if m.queued:
+                rec["queued"] = True
             if m.role == "assistant":
                 rec["model"] = m.model
                 if m.tool_calls:

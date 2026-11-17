@@ -82,6 +82,50 @@ class TestSessionParsing(unittest.TestCase):
             self.assertEqual(s.short_id, "abcd1234")
 
 
+def _queued_line(prompt, human=True, mode="prompt"):
+    att = {"type": "queued_command", "prompt": prompt, "commandMode": mode}
+    if human:
+        att["humanTurn"] = True
+    return {"type": "attachment", "attachment": att, "timestamp": "2026-11-17T22:00:00Z"}
+
+
+class TestQueuedPrompts(unittest.TestCase):
+    """Prompts typed while the agent works arrive as queued_command attachments."""
+
+    def _session(self, lines):
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        path = _write_jsonl(Path(td.name), "feed0001-0000-0000-0000-000000000000.jsonl", lines)
+        s = cc.Session(path)
+        s.parse()
+        return s
+
+    def test_typed_queued_prompt_is_a_user_message(self):
+        s = self._session([
+            _user_line("start the long job"),
+            _assistant_line("Working on it."),
+            _queued_line("or do we need a question generator?"),
+            _assistant_line("Answering your queued question."),
+        ])
+        users = [m for m in s.messages if m.role == "user"]
+        self.assertEqual([m.text for m in users],
+                         ["start the long job", "or do we need a question generator?"])
+        self.assertEqual([m.queued for m in users], [False, True])
+
+    def test_background_notifications_are_not_the_human(self):
+        s = self._session([
+            _user_line("start"),
+            _queued_line("<task-notification>done</task-notification>", human=False, mode="task-notification"),
+            _queued_line("<task-notification>x</task-notification>", human=False),
+        ])
+        self.assertEqual([m.text for m in s.messages if m.role == "user"], ["start"])
+
+    def test_queued_prompt_does_not_split_turns(self):
+        base = [_user_line("start"), _assistant_line("a"), _assistant_line("b")]
+        with_q = [_user_line("start"), _assistant_line("a"), _queued_line("hey?"), _assistant_line("b")]
+        self.assertEqual(len(self._session(base).turns), len(self._session(with_q).turns))
+
+
 class TestSessionScanner(unittest.TestCase):
     """Boundary 2: SessionScanner finds the query, returns count + snippets."""
 
