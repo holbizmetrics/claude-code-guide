@@ -11,6 +11,7 @@
 #   ./setup-claude-termux.sh --all    # Install everything, no questions
 #   ./setup-claude-termux.sh --status # Show what's installed
 #   ./setup-claude-termux.sh --dry-run # Simulate install (no side effects)
+#   ./setup-claude-termux.sh --npm-pin # Old route: npm Claude Code 2.1.112 + proot
 #   ./setup-claude-termux.sh --log    # Tee output to ~/setup-claude-termux.log
 #   ./setup-claude-termux.sh --log=PATH # Tee output to PATH
 #   ./setup-claude-termux.sh --help   # Show this help
@@ -23,11 +24,22 @@
 # What this does:
 #   1. Updates all Termux packages
 #   2. Installs Node.js, Python, proot, git (if missing)
-#   3. Validates Node.js version (≥18 required)
-#   4. Installs Claude Code (or fixes broken install)
+#   3. Checks Node.js (only the --npm-pin route needs it)
+#   4. Installs current Claude Code natively (or migrates an old npm install)
 #   5. Sets up Android storage access
-#   6. Configures .bashrc (proot alias, TMPDIR)
+#   6. Configures .bashrc (TMPDIR; proot alias only for --npm-pin)
 #   7. Optional: math, science, LaTeX, GitHub CLI, formal-proof checkers
+#
+# CLAUDE CODE ON TERMUX (v2.0.0, 2026-11-21). npm cannot go past 2.1.112 on
+# Termux: every later release ships only native binaries, none for Android.
+# The working route is ferrumclaudepilgrim/claude-code-android (MIT): Termux's
+# glibc port + glibc-runner + Anthropic's own linux-arm64 binary, no proot,
+# with a launcher at $PREFIX/bin/claude that updates itself, smoke-tests each
+# new build and keeps the previous one for rollback. Step 4 downloads that
+# project's install.sh (or migrate.sh, for an npm install) at a PINNED commit,
+# checks its sha256, and only then runs it. On Android 8-10, where the native
+# binary cannot run, install.sh itself offers pinned 2.1.112.
+# (v1.x of this script pinned Claude Code 1.x via npm; that reason expired.)
 #
 # After setup, Claude Code launches automatically.
 #
@@ -35,19 +47,28 @@
 # Proof verification paths from: https://github.com/holbizmetrics/proof-anywhere
 # ══════════════════════════════════════════════════
 
-SCRIPT_VERSION="1.2.3"
+SCRIPT_VERSION="2.0.0"
 MIN_NODE_MAJOR=18
 NANODA_DIR="$HOME/nanoda_lib"
 
-# Pin Claude Code to the 1.x line. 2.x requires a platform-native binary
-# whose npm postinstall refuses to download on android-arm64, leaving the
-# CLI unable to start. Until 2.x has an Android path, 1.x is the only
-# version that actually runs in Termux.
-CLAUDE_PIN="@anthropic-ai/claude-code@^1"
+# --npm-pin fallback only: 2.1.112 is the last npm release with a cli.js that
+# runs on Termux's Node (2.1.113+ ship only native binaries, none for Android).
+CLAUDE_PIN="@anthropic-ai/claude-code@2.1.112"
+
+# Native route, pinned upstream: ferrumclaudepilgrim/claude-code-android v2.9.5.
+# To move the pin: a new FULL commit sha plus both sha256 values, computed from
+# the downloaded files themselves. CCA_EXPECT_* override only the expected hash
+# (used by the test to prove a mismatch is refused); the URL stays fixed to the
+# pinned commit, so an override can only cause a refusal.
+CCA_REPO="ferrumclaudepilgrim/claude-code-android"
+CCA_COMMIT="a0477923457be0bd2d09580d46c697b0fb9d5c32"
+CCA_SHA256_INSTALL="${CCA_EXPECT_INSTALL:-307ee7ef73055fc6a8c6b55cb8c9eadf16ec945ef9207e4f22f5e79f38d1ccaa}"
+CCA_SHA256_MIGRATE="${CCA_EXPECT_MIGRATE:-d0fcdc93f199f2c735ad38476b8092004be4d0253d8e909c3b3692e1a92bd8af}"
 
 # ── Parse flags (scan all args, not just $1) ────
 MODE="interactive"
 DRY_RUN=0
+NPM_PIN=0
 LOG_FILE=""
 for arg in "$@"; do
     case "$arg" in
@@ -55,6 +76,8 @@ for arg in "$@"; do
         --status)     MODE="status" ;;
         --all)        MODE="all" ;;
         --dry-run)    DRY_RUN=1 ;;
+        --npm-pin)    NPM_PIN=1 ;;
+        --claude-route) MODE="claude-route" ;;
         --version|-v) MODE="version" ;;
         --log)        LOG_FILE="$HOME/setup-claude-termux.log" ;;
         --log=*)      LOG_FILE="${arg#--log=}" ;;
@@ -108,6 +131,43 @@ check_pkg()    { dpkg -s "$1" &>/dev/null 2>&1; }
 check_cmd()    { command -v "$1" &>/dev/null 2>&1; }
 check_pip()    { check_cmd python && python -c "import $1" &>/dev/null 2>&1; }
 check_bashrc() { grep -q "$1" "$HOME/.bashrc" 2>/dev/null; }
+# An UNCOMMENTED `alias claude='proot ...'` (check_bashrc also matches a commented one).
+has_proot_alias() { grep -Eq "^[[:space:]]*alias claude=.proot " "$HOME/.bashrc" 2>/dev/null; }
+
+# Which Claude Code is on PATH? One word:
+#   native  -- the self-updating glibc-runner launcher (nothing to do)
+#   npm     -- an npm install (frozen at <= 2.1.112 on Termux) -> migrate
+#   missing -- none -> install
+#   unknown -- something else; never touched
+# CLAUDE_BIN overrides the lookup (used by the test).
+claude_route() {
+    local bin="${CLAUDE_BIN-$(command -v claude 2>/dev/null || true)}"
+    if [ -z "$bin" ] || [ ! -e "$bin" ]; then echo missing; return; fi
+    local real; real="$(readlink -f "$bin" 2>/dev/null || echo "$bin")"
+    case "$real" in
+        */node_modules/@anthropic-ai/claude-code/*) echo npm; return ;;
+    esac
+    if grep -q 'VERSIONS_DIR=' "$bin" 2>/dev/null && grep -q 'glibc' "$bin" 2>/dev/null; then
+        echo native; return
+    fi
+    echo unknown
+}
+
+# fetch_verified <file> <expected-sha256> <dest>: download from the pinned
+# commit; succeed only if the sha256 matches. A mismatch deletes the download.
+fetch_verified() {
+    local file="$1" want="$2" dest="$3" got
+    curl -fsSL --max-time 60 -o "$dest" \
+        "https://raw.githubusercontent.com/$CCA_REPO/$CCA_COMMIT/$file" \
+        || { fail "download of $file failed"; rm -f "$dest"; return 1; }
+    got="$(sha256sum "$dest" | cut -d' ' -f1)"
+    if [ "$got" != "$want" ]; then
+        fail "$file sha256 MISMATCH -- expected $want, got $got. NOT running it."
+        rm -f "$dest"
+        return 1
+    fi
+    ok "$file verified (sha256 matches pinned commit ${CCA_COMMIT:0:7})"
+}
 
 # ── Node.js version helper ─────────────────────
 # Returns 0 if node is installed and major version >= MIN_NODE_MAJOR
@@ -127,11 +187,11 @@ check_node_version() {
 # Uses timeout if available, falls back to background+wait
 check_claude_health() {
     if check_cmd timeout; then
-        timeout 15 claude --version &>/dev/null 2>&1
+        timeout 15 env -u BUN_OPTIONS claude --version &>/dev/null 2>&1
     else
         local tmpout
         tmpout=$(mktemp "${TMPDIR:-/tmp}/claude-health.XXXXXX" 2>/dev/null || echo "$HOME/tmp/.claude-health-$$")
-        claude --version >"$tmpout" 2>&1 &
+        env -u BUN_OPTIONS claude --version >"$tmpout" 2>&1 &
         local pid=$!
         local count=0
         while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 15 ]; do
@@ -153,12 +213,15 @@ check_claude_health() {
 
 # ── Get Claude version string (timeout-safe) ───
 get_claude_version() {
+    # BUN_OPTIONS: inside a running Claude session it carries a RELATIVE preload
+    # path, so a nested `claude --version` dies unless cwd is a child of $HOME.
     if check_cmd timeout; then
-        timeout 10 claude --version 2>/dev/null
+        local v; v="$(timeout 10 env -u BUN_OPTIONS claude --version 2>/dev/null)"
+        echo "${v:-version unreadable}"
     else
         local tmpout
         tmpout=$(mktemp "${TMPDIR:-/tmp}/claude-ver.XXXXXX" 2>/dev/null || echo "$HOME/tmp/.claude-ver-$$")
-        claude --version >"$tmpout" 2>/dev/null &
+        env -u BUN_OPTIONS claude --version >"$tmpout" 2>/dev/null &
         local pid=$!
         local count=0
         while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 10 ]; do
@@ -211,6 +274,11 @@ check_lean_in_proot() {
 }
 
 # ── Status report ───────────────────────────────
+if [ "$MODE" = "claude-route" ]; then
+    claude_route
+    exit 0
+fi
+
 show_status() {
     echo ""
     echo -e "${BOLD}🔍 Current Termux Environment${NC}"
@@ -229,9 +297,14 @@ show_status() {
         warn "Node.js not installed"
     fi
     check_pkg python  && ok "Python $(python --version 2>/dev/null | cut -d' ' -f2)" || warn "Python not installed"
-    check_pkg proot   && ok "proot installed"                              || warn "proot not installed"
+    check_pkg proot   && ok "proot installed"                              || info "proot not installed (only the --npm-pin route needs it)"
     check_pkg git     && ok "git $(git --version 2>/dev/null | cut -d' ' -f3)" || warn "git not installed"
-    check_cmd claude  && ok "Claude Code $(get_claude_version)"            || warn "Claude Code not installed"
+    case "$(claude_route)" in
+        native)  ok "Claude Code $(get_claude_version) (native, updates itself)" ;;
+        npm)     warn "Claude Code $(get_claude_version) via npm -- frozen at <= 2.1.112; re-run this script to migrate" ;;
+        missing) warn "Claude Code not installed" ;;
+        *)       warn "Claude Code: unrecognised install at $(command -v claude)" ;;
+    esac
     check_pkg gh      && ok "GitHub CLI $(gh --version 2>/dev/null | head -1 | cut -d' ' -f3)" || info "GitHub CLI not installed"
 
     echo ""
@@ -268,7 +341,12 @@ show_status() {
 
     echo ""
     echo "⚙️  Shell Config:"
-    check_bashrc "proot -b /data/data/com.termux/files/usr/tmp:/tmp claude" && ok "Claude proot alias in .bashrc" || warn "Claude proot alias missing"
+    if [ "$(claude_route)" = "native" ]; then
+        has_proot_alias && warn "Old proot alias for claude still active in .bashrc -- not needed with the native install" \
+                        || ok "No proot alias (correct for the native install)"
+    else
+        check_bashrc "proot -b /data/data/com.termux/files/usr/tmp:/tmp claude" && ok "Claude proot alias in .bashrc" || warn "Claude proot alias missing"
+    fi
     check_bashrc "export TMPDIR"  && ok "TMPDIR configured"                || warn "TMPDIR not configured"
     [ -d "$HOME/storage/downloads" ] && ok "Storage access enabled"        || warn "Storage not set up (run termux-setup-storage)"
 
@@ -341,8 +419,8 @@ for dep in nodejs python git proot; do
             ok "$dep installed"
         else
             fail "$dep installation failed"
-            if [ "$dep" = "nodejs" ] || [ "$dep" = "proot" ]; then
-                fail "Cannot continue without $dep."
+            if [ "$NPM_PIN" = "1" ] && { [ "$dep" = "nodejs" ] || [ "$dep" = "proot" ]; }; then
+                fail "Cannot continue the --npm-pin route without $dep."
                 exit 1
             fi
         fi
@@ -356,34 +434,62 @@ if [ "$DRY_RUN" = "1" ]; then
     ok "Node.js version check (dry-run — assuming ≥v${MIN_NODE_MAJOR})"
 elif check_node_version; then
     ok "Node.js $(node --version 2>/dev/null) meets minimum (v${MIN_NODE_MAJOR}+)"
-else
+elif [ "$NPM_PIN" = "1" ]; then
     NODE_CURRENT=$(node --version 2>/dev/null || echo "unknown")
     fail "Node.js ${NODE_CURRENT} is below the required v${MIN_NODE_MAJOR}+"
-    info "Claude Code requires Node.js ${MIN_NODE_MAJOR} or newer."
-    info "Try: pkg upgrade nodejs"
+    info "The npm route needs Node.js ${MIN_NODE_MAJOR} or newer. Try: pkg upgrade nodejs"
     echo ""
-    fail "Cannot continue with outdated Node.js."
+    fail "Cannot continue the --npm-pin route with outdated Node.js."
     exit 1
+else
+    info "Node.js $(node --version 2>/dev/null || echo 'missing') is old, but the native Claude Code does not use it."
 fi
 
-# Step 4: Check Claude Code
+# Step 4: Claude Code
 echo ""
 echo "📦 [4/7] Checking Claude Code..."
-if [ "$DRY_RUN" = "1" ]; then
-    echo "   [DRY] would run: npm install -g $CLAUDE_PIN"
-    WOULD_INSTALL+=("npm: $CLAUDE_PIN")
-    ok "Claude Code installed (dry-run)"
-elif check_cmd claude; then
-    if check_claude_health; then
-        ok "Claude Code working ($(get_claude_version))"
+CLAUDE_ROUTE="$(claude_route)"
+if [ "$NPM_PIN" = "1" ]; then
+    if [ "$DRY_RUN" = "1" ]; then
+        echo "   [DRY] would run: npm install -g $CLAUDE_PIN"
+        WOULD_INSTALL+=("npm: $CLAUDE_PIN")
     else
-        warn "Claude Code binary found but not responding (likely 2.x without android-arm64 native binary)"
-        echo "   📦 Reinstalling pinned to 1.x ($CLAUDE_PIN)..."
-        npm install -g "$CLAUDE_PIN" && ok "Claude Code reinstalled" || { fail "Reinstall failed"; exit 1; }
+        echo "   📦 Installing pinned npm Claude Code ($CLAUDE_PIN)..."
+        npm install -g "$CLAUDE_PIN" && ok "Claude Code installed" || { fail "Installation failed"; exit 1; }
     fi
+    CLAUDE_ROUTE=npm
+elif [ "$CLAUDE_ROUTE" = "native" ]; then
+    ok "Native Claude Code already installed ($(get_claude_version)); it updates itself."
+    info "Force an update check now: claude --update-now"
+elif [ "$CLAUDE_ROUTE" = "unknown" ]; then
+    warn "An unrecognised 'claude' is on PATH ($(command -v claude)) -- leaving it alone."
 else
-    echo "   📦 Installing Claude Code ($CLAUDE_PIN)..."
-    npm install -g "$CLAUDE_PIN" && ok "Claude Code installed" || { fail "Installation failed"; exit 1; }
+    if [ "$CLAUDE_ROUTE" = "npm" ]; then
+        CCA_FILE=migrate.sh; CCA_WANT="$CCA_SHA256_MIGRATE"
+        info "npm install found ($(get_claude_version || echo 'not responding')) -- npm cannot go past 2.1.112 here; migrating to the native route."
+    else
+        CCA_FILE=install.sh; CCA_WANT="$CCA_SHA256_INSTALL"
+        info "Installing current Claude Code via the native route (pinned ${CCA_REPO}@${CCA_COMMIT:0:7})."
+    fi
+    CCA_TMP="$(mktemp "${TMPDIR:-$HOME/tmp}/cca-$CCA_FILE.XXXXXX")"
+    if ! fetch_verified "$CCA_FILE" "$CCA_WANT" "$CCA_TMP"; then
+        fail "Not installing an unverified script. Fallback: ./setup-claude-termux.sh --npm-pin (2.1.112)"
+        exit 1
+    fi
+    if [ "$DRY_RUN" = "1" ]; then
+        echo "   [DRY] would run: bash $CCA_FILE (verified, pinned ${CCA_COMMIT:0:7})"
+        WOULD_INSTALL+=("run: upstream $CCA_FILE @ ${CCA_COMMIT:0:7} (sha256 verified)")
+        rm -f "$CCA_TMP"
+    else
+        info "Running upstream $CCA_FILE: two yes/no questions, ~5-10 min, ~233 MB download."
+        CCA_RC=0
+        bash "$CCA_TMP" || CCA_RC=$?
+        rm -f "$CCA_TMP"
+        [ "$CCA_RC" -eq 0 ] || { fail "upstream $CCA_FILE exited $CCA_RC"; exit 1; }
+        hash -r
+        CLAUDE_ROUTE="$(claude_route)"
+        ok "Claude Code: $(get_claude_version) ($CLAUDE_ROUTE)"
+    fi
 fi
 
 # Step 5: Storage access
@@ -436,18 +542,26 @@ fi
 echo ""
 echo "⚙️  [7/7] Configuring shell..."
 if [ "$DRY_RUN" = "1" ]; then
-    echo "   [DRY] would append Claude proot alias + TMPDIR export to \$HOME/.bashrc"
-    WOULD_INSTALL+=("edit: ~/.bashrc (proot alias, TMPDIR)")
+    echo "   [DRY] would add TMPDIR to \$HOME/.bashrc (proot alias only on the npm route)"
+    WOULD_INSTALL+=("edit: ~/.bashrc (TMPDIR)")
     ok ".bashrc would be configured (dry-run)"
 else
     BASHRC="$HOME/.bashrc"
     touch "$BASHRC"
     CHANGED=false
 
-    if ! check_bashrc "proot -b /data/data/com.termux/files/usr/tmp:/tmp claude"; then
-        echo "" >> "$BASHRC"
-        echo "# Claude Code setup" >> "$BASHRC"
-        echo "alias claude='proot -b /data/data/com.termux/files/usr/tmp:/tmp claude'" >> "$BASHRC"
+    if [ "$CLAUDE_ROUTE" = "npm" ]; then
+        if ! check_bashrc "proot -b /data/data/com.termux/files/usr/tmp:/tmp claude"; then
+            echo "" >> "$BASHRC"
+            echo "# Claude Code setup (npm route)" >> "$BASHRC"
+            echo "alias claude='proot -b /data/data/com.termux/files/usr/tmp:/tmp claude'" >> "$BASHRC"
+            CHANGED=true
+        fi
+    elif has_proot_alias; then
+        # The native launcher must not run under proot. Comment the old alias out.
+        cp -a "$BASHRC" "$BASHRC.bak-setup-claude-$(date +%Y%m%d-%H%M%S)"
+        sed -i -E "s|^([[:space:]]*)(alias claude=.proot )|\\1# (native Claude Code needs no proot) \\2|" "$BASHRC"
+        ok "Commented out the old proot alias for claude (backup next to .bashrc)"
         CHANGED=true
     fi
 
@@ -729,7 +843,11 @@ echo ""
 echo "🚀 Launching Claude Code..."
 echo ""
 
-proot -b /data/data/com.termux/files/usr/tmp:/tmp claude
+if [ "$CLAUDE_ROUTE" = "npm" ]; then
+    proot -b /data/data/com.termux/files/usr/tmp:/tmp claude
+else
+    claude
+fi
 
 echo ""
 echo "👋 Claude Code exited. Your Termux session is still active."
