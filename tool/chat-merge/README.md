@@ -63,6 +63,21 @@ between exports of the same conversation: the spinner verb (`✻ Brewed for`,
 `✻ Cogitated for`, `✻ Cooked for`, `✻ Sautéed for`, ...), the version banner,
 the model line, and the working-directory line.
 
+## What it never does silently (2026-11-24)
+
+- **Diverged exports are kept, not dropped.** Grouping looks only at the opening ~200 lines, so two
+  exports can share an opening and still go different ways later (a resumed or rewound chat, or two
+  sessions with the same long boot). Before a smaller member is discarded, ChatMerge checks that its
+  whole content is in the largest; any lines that are not are appended below a
+  `══ Additional content from export N ══` separator, with a `WARNING:` line naming the file.
+  Progressive exports that really are contained produce exactly the output they did before.
+- **No two streams share an output file.** Streams whose names clash (exports `chat-export-1/2` and
+  `chat-export-3/4` of different conversations, or several groups with no shared filename prefix,
+  which all fall back to `merged`) are each written under their own largest file's name, with a
+  `Note:` line; a numeric suffix is the last guarantee. Before this, the second write overwrote the first.
+
+Tests: `python3 tests/run_tests.py` (see `tests/README.md`).
+
 ## Limitations
 
 - **Post-compact tails**: when a conversation is compacted and additional

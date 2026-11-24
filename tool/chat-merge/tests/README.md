@@ -1,6 +1,6 @@
 # chat-merge — test fixtures
 
-Seed fixtures for the ChatMerge regression suite (suite itself: TODO). Promoted
+Fixtures and the ChatMerge regression suite (`run_tests.py`, added 2026-11-24). Promoted
 2026-05-23 from ad-hoc mass-use test data, so the tool that *rewrites chat history*
 finally gets a safety net.
 
@@ -23,6 +23,16 @@ Each case dir holds input `.txt` exports + the expected `*_merged.txt`:
 4. **Input validation**: non-export / wrong-type inputs rejected, not silently processed
    (gap flagged in `../AUDIT-2026-05-11.md`).
 
-## Running (once the suite exists)
-`dotnet test` — a `ChatMerge.Tests` project that runs ChatMerge on each case dir and
-asserts the properties above against the expected `_merged.txt`.
+## Running
+`python3 tests/run_tests.py` (needs the .NET 10 SDK; `--no-build` reuses the built binary). It runs
+ChatMerge on a copy of each case dir and asserts, per case: the expected `_merged.txt` set and
+content (line endings normalised -- the fixtures were made on Windows), determinism (two runs
+identical), property 1 as LOSSLESS (every non-blank input line is in some output), and one output
+file per stream. Two generated RED cases pin the 2026-11-24 data-loss bugs and failed on the code
+before that fix: `collide` (two conversations named chat-export-1/2 and -3/4 wrote one output file,
+the first lost) and `diverge` (two exports sharing a 220-line opening, the smaller one's own ending
+dropped). Last run: `RECORD: chat-merge-tests passed=40 failed=0`; switching either fix off turns its
+own two checks red (38/40).
+
+Not covered yet: property 4 (input validation -- non-export files are still processed) and `--single`
+mode (checked by hand 2026-11-24: both conversations kept).

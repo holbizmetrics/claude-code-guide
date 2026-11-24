@@ -111,17 +111,23 @@ class Program
                 Console.WriteLine($"    {Path.GetFileName(f)} ({fileLines[f].Length} lines)");
         }
 
-        // Step 3: For each group, keep only the largest file (contains all earlier content)
+        // Step 3: For each group, keep the largest file -- but only drop a smaller member once its whole
+        // content is shown to be inside the largest. Grouping looks at the opening ~200 lines only, so two
+        // exports can share an opening and still diverge (a resumed or rewound chat, or two sessions with the
+        // same long boot). A diverged member's extra lines are appended, never silently discarded.
         var streamResults = new List<(string StreamName, string LargestFile, string[] Lines)>();
         foreach (var (groupName, files) in groups)
         {
-            var largest = files.OrderByDescending(f => fileLines[f].Length).First();
-            Console.WriteLine($"  Keeping: {Path.GetFileName(largest)} ({fileLines[largest].Length} lines)");
+            var largest = files.OrderByDescending(f => fileLines[f].Length).ThenBy(f => f, StringComparer.Ordinal).First();
+            var lines = KeepLargestLosslessly(largest, files, fileLines);
+            Console.WriteLine($"  Keeping: {Path.GetFileName(largest)} ({fileLines[largest].Length} lines)"
+                              + (lines.Length > fileLines[largest].Length ? $" + {lines.Length - fileLines[largest].Length} appended" : ""));
 
             // Derive stream name: find the common prefix of all filenames in the group
             var streamName = GetCommonPrefix(files.Select(Path.GetFileNameWithoutExtension).ToList());
-            streamResults.Add((streamName, largest, fileLines[largest]));
+            streamResults.Add((streamName, largest, lines));
         }
+        streamResults = DisambiguateNames(streamResults);
 
         // Step 4: Write output
         Console.WriteLine();
@@ -165,6 +171,58 @@ class Program
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// The largest member's lines, plus -- for any smaller member with content the largest lacks -- that
+    /// content appended after a separator, with a WARNING on stdout. A member fully contained in the largest
+    /// adds nothing, so progressive exports come out exactly as before.
+    /// </summary>
+    static string[] KeepLargestLosslessly(string largest, List<string> files, Dictionary<string, string[]> fileLines)
+    {
+        var baseFps = BuildFingerprints(fileLines[largest], 5);
+        var diverged = new List<string>();
+        foreach (var f in files.Where(f => f != largest).OrderBy(f => f, StringComparer.Ordinal))
+        {
+            var extra = FindUniqueRanges(fileLines[f], baseFps, 5);
+            if (extra.Count == 0) continue;
+            int n = extra.Sum(r => r.End - r.Start + 1);
+            Console.WriteLine($"  WARNING: {Path.GetFileName(f)} has {n} line(s) not in {Path.GetFileName(largest)} " +
+                              "-- the exports diverged after a shared opening; keeping those lines, appended below a separator");
+            diverged.Add(f);
+        }
+        if (diverged.Count == 0) return fileLines[largest];
+        var members = new List<string[]> { fileLines[largest] };
+        members.AddRange(diverged.Select(f => fileLines[f]));
+        return MergeStreams(members, "export").ToArray();
+    }
+
+    /// <summary>
+    /// One output path per stream. Two streams can derive the same name (exports chat-export-1/2 and
+    /// chat-export-3/4 of different conversations both give "chat-export"; every group without a shared
+    /// filename prefix gives "merged"), and the second write used to overwrite the first. Every stream in a
+    /// clash is renamed after its own largest file; a numeric suffix is the last guarantee.
+    /// </summary>
+    static List<(string StreamName, string LargestFile, string[] Lines)> DisambiguateNames(
+        List<(string StreamName, string LargestFile, string[] Lines)> streams)
+    {
+        var clashing = streams.GroupBy(s => s.StreamName, StringComparer.OrdinalIgnoreCase)
+                              .Where(g => g.Count() > 1).Select(g => g.Key)
+                              .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<(string, string, string[])>();
+        foreach (var s in streams)
+        {
+            var name = clashing.Contains(s.StreamName) ? Path.GetFileNameWithoutExtension(s.LargestFile) : s.StreamName;
+            var unique = name;
+            for (int k = 2; !used.Add(unique); k++)
+                unique = $"{name}-{k}";
+            if (unique != s.StreamName)
+                Console.WriteLine($"  Note: stream \"{s.StreamName}\" would share its output name with another stream; " +
+                                  $"writing it as \"{unique}\"");
+            result.Add((unique, s.LargestFile, s.Lines));
+        }
+        return result;
     }
 
     /// <summary>
@@ -359,7 +417,7 @@ class Program
     /// <summary>
     /// Merges conversation streams, removing duplicate blocks across streams.
     /// </summary>
-    static List<string> MergeStreams(List<string[]> streams)
+    static List<string> MergeStreams(List<string[]> streams, string unit = "conversation stream")
     {
         if (streams.Count == 1)
             return streams[0].ToList();
@@ -382,7 +440,7 @@ class Program
 
                 result.Add("");
                 result.Add("═══════════════════════════════════════════════════════════════");
-                result.Add($"══ Additional content from conversation stream {s + 1} ══");
+                result.Add($"══ Additional content from {unit} {s + 1} ══");
                 result.Add("═══════════════════════════════════════════════════════════════");
                 result.Add("");
 
